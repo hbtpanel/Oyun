@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
 * {
     margin: 0;
     padding: 0;
@@ -10,10 +11,24 @@
 body, html {
     width: 100vw;
     height: 100vh;
-    /* Büyücü mavisi / Derin gece mavisi */
-    background: radial-gradient(circle, #2c3e50 0%, #1a1a2e 100%);
     overflow: hidden;
-    font-family: 'Avenir', 'Helvetica Neue', 'Arial', sans-serif;
+    font-family: 'MedievalSharp', 'Arial', sans-serif;
+    
+    /* YENİ: Büyülü Görseli Arka Plan Yap */
+    background-image: url('../arkaplan.jpg'); /* Eğer resmi css klasörüne koyarsan url('arkaplan.jpg') yapabilirsin */
+    background-size: cover;
+    background-position: center bottom;
+    background-repeat: no-repeat;
+}
+
+/* YENİ: Şişelerin net görünmesi için arka plan görselinin üzerine sihirli bir karartma (Vignette) filtresi */
+body::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: radial-gradient(circle at 50% 50%, rgba(20, 25, 40, 0.4) 0%, rgba(10, 12, 20, 0.85) 100%);
+    z-index: 0;
+    pointer-events: none;
 }
 
 #gameCanvas {
@@ -70,6 +85,14 @@ button:active {
     background: rgba(231, 76, 60, 0.2);
     border-color: #e74c3c;
     color: #e74c3c;
+    box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); box-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
+    50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(231, 76, 60, 0.9); }
+    100% { transform: scale(1); box-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
 }
 
 #magic-ritual-screen {
@@ -200,4 +223,82 @@ button:active {
 .smoke-active {
     opacity: 1 !important;
     transform: translateY(0) !important;
+}
+/* --- YENİ: ÜYELİK FORMU STİLLERİ --- */
+#login-overlay {
+    position: absolute;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: radial-gradient(circle at 50% 40%, #2a344a 0%, #111625 80%, #07090f 100%);
+    z-index: 300;
+    display: flex; align-items: center; justify-content: center;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.auth-form input {
+    padding: 15px;
+    border-radius: 10px;
+    border: 2px solid #2c3e50;
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+    font-size: 16px;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.3s;
+    text-align: center;
+}
+
+.auth-form input:focus {
+    border-color: #f1c40f;
+    box-shadow: 0 0 15px rgba(241, 196, 15, 0.3);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* --- YENİ: MOBİL UYUM (RESPONSIVE) --- */
+@media screen and (max-width: 600px) {
+    #ui-layer {
+        padding: 15px; /* Mobilde boşlukları daralt */
+    }
+
+    .top-bar {
+        font-size: 16px;
+    }
+
+    /* Mobilde alt butonları yan yana sıkıştırma, taşarlarsa alt alta insinler */
+    .bottom-bar {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .bottom-bar button {
+        padding: 8px 12px;
+        font-size: 13px;
+        flex: 1 1 auto; /* Ekrana sığacak şekilde uzayıp kısalsınlar */
+        min-width: 30%;
+    }
+
+    .glow-text {
+        font-size: 26px; /* Büyücü başlıklarını mobilde küçült */
+    }
+
+    #btn-start {
+        font-size: 20px;
+        padding: 15px 30px;
+    }
+}
+
+/* Küçük ekran yüksekliği olan telefonlar (Yatay Mod veya iPhone SE vb.) için */
+@media screen and (max-height: 700px) {
+    #ui-layer {
+        padding: 10px;
+    }
+    .top-bar {
+        font-size: 14px;
+    }
 }

@@ -1,15 +1,67 @@
 const GameApp = {
-    state: {
+   state: {
         level: 1, points: 0, movesLeft: 0,
         tubes: [], selectedTube: null, isAnimating: false,
         pouringData: null, ritualUsedInLevel: false,
-        winPhase: 0, winStartTime: 0 // YENİ: Zafer Animasyonu Kontrolcüleri
+        winPhase: 0, winStartTime: 0, levelStartTime: 0,
+        autoSolveUsesInLevel: 0 // YENİ: Katlanarak artan puan için kullanım sayacı
     },
 
     init: function() {
-        this.loadGame();
         Renderer.init();
         this.setupEvents();
+        
+        // Oturum kontrolü
+        const activeUser = localStorage.getItem('bilgehan_active_user');
+        if (activeUser) {
+            ApiService.currentUser = activeUser;
+            document.getElementById('login-overlay').style.display = 'none';
+        } else {
+            // Giriş yapılmamışsa oyun ekranını bekle
+            document.getElementById('start-overlay').style.display = 'none';
+        }
+    },
+
+    startGameSession: async function() {
+        if (!ApiService.currentUser) return;
+
+        // 1. Yerel veriyi al (Cihazın hafızası)
+        let localLevel = parseInt(localStorage.getItem('bilgehan_active_level')) || 1;
+        let localPoints = parseInt(localStorage.getItem('bilgehan_active_points')) || 0;
+
+        // 2. Veritabanından (DB) veriyi çek
+        let dbLevel = 1;
+        let dbPoints = 0;
+        
+        const dbData = await ApiService.getProgress(); 
+        if (dbData && dbData.success) {
+            dbLevel = dbData.level;
+            dbPoints = dbData.points;
+        }
+
+        // 3. HANGİSİ İLERİDEYSE ONU SEÇ (Akıllı Senkronizasyon)
+        if (dbLevel > localLevel) {
+            // Veritabanı ileride (Manuel değiştirilmiş veya başka cihazda oynanmış)
+            this.state.level = dbLevel;
+            this.state.points = dbPoints;
+            localStorage.setItem('bilgehan_active_level', dbLevel);
+            localStorage.setItem('bilgehan_active_points', dbPoints);
+            console.log("Veritabanı daha ileride, seviye eşitlendi:", dbLevel);
+            
+        } else if (localLevel > dbLevel) {
+            // Yerel hafıza ileride (İnternet kopukken oynanmış olabilir)
+            this.state.level = localLevel;
+            this.state.points = localPoints;
+            ApiService.saveProgress(localLevel, localPoints);
+            console.log("Yerel hafıza daha ileride, DB güncellendi:", localLevel);
+            
+        } else {
+            // Eşitlerse normal başla (Puanı yüksek olanı al)
+            this.state.level = localLevel;
+            this.state.points = Math.max(localPoints, dbPoints);
+        }
+
+        // 4. Doğru verilerle oyunu başlat
         this.startNewLevel(this.state.level);
         requestAnimationFrame((time) => this.loop(time));
     },
@@ -19,6 +71,8 @@ const GameApp = {
         this.state.tubes = levelData.tubesData;
         this.state.movesLeft = levelData.movesLimit;
         this.state.ritualUsedInLevel = false; 
+        this.state.autoSolveUsesInLevel = 0; // YENİ: Sayacı sıfırla
+        this.state.levelStartTime = Date.now(); 
         this.updateUI();
     },
 
@@ -28,7 +82,6 @@ const GameApp = {
     },
 
     handleInteraction: function(x, y) {
-        // Animasyon sürerken veya zafer kutlamasındayken dokunmaları engelle
         if (this.state.isAnimating || this.state.winPhase > 0) return;
 
         const rect = Renderer.canvas.getBoundingClientRect();
@@ -47,14 +100,12 @@ const GameApp = {
         }
 
         if (clickedTube !== -1) {
-           // GÜNCEL: Mühürlü şişe kontrolü
             let t = this.state.tubes[clickedTube];
             let isSealed = false;
             if (t.blocks.length > 0 && t.blocks.length === t.capacity) {
                 const tubeColor = t.blocks[0].color;
                 const allSame = t.blocks.every(b => b.color === tubeColor && !b.hidden);
                 
-                // Kritik: Bu renkten dışarıda (diğer şişelerde) hala var mı?
                 const colorTotalInGame = this.state.tubes.reduce((acc, curr) => 
                     acc + curr.blocks.filter(b => b.color === tubeColor).length, 0);
                 
@@ -97,6 +148,75 @@ const GameApp = {
         
         const toTop = toTube.blocks[toTube.blocks.length - 1];
         return fromTop.color === toTop.color;
+    },
+
+    // YENİ: Yapay Zekanın hamle sonucunu kafasında canlandırması
+    simulateState: function(fromIdx, toIdx) {
+        let clone = JSON.parse(JSON.stringify(this.state.tubes));
+        let source = clone[fromIdx];
+        let target = clone[toIdx];
+        
+        if (source.blocks.length === 0) return "";
+        let topColor = source.blocks[source.blocks.length - 1].color;
+        
+        let count = 0;
+        for (let i = source.blocks.length - 1; i >= 0; i--) {
+            if (!source.blocks[i].hidden && source.blocks[i].color === topColor) count++;
+            else break;
+        }
+        
+        let space = target.capacity - target.blocks.length;
+        let amount = Math.min(count, space);
+        
+        for (let i = 0; i < amount; i++) target.blocks.push(source.blocks.pop());
+        if (source.blocks.length > 0) source.blocks[source.blocks.length - 1].hidden = false;
+        
+        // Tablonun anlık resmini metin olarak döndür
+        return clone.map(t => t.blocks.map(b => b.hidden ? '?' : b.color).join(',')).join('|');
+    },
+
+  // GÜNCELLENDİ: Hafıza Kontrollü Zeka
+    findBestMove: function(visitedStates) {
+        let bestMove = null;
+        let bestScore = -1000;
+
+        for (let i = 0; i < this.state.tubes.length; i++) {
+            for (let j = 0; j < this.state.tubes.length; j++) {
+                if (i === j) continue;
+
+                if (this.canPour(i, j)) {
+                    // YENİ: Bu hamle sonucunda oluşacak tabloyu tahmin et
+                    let predictedState = this.simulateState(i, j);
+                    
+                    // KRİTİK: Eğer bu tabloyu daha önce gördüysek, bu hamleyi YASAKLA! (Sonsuz döngü çözer)
+                    if (visitedStates.has(predictedState)) continue;
+
+                    let score = 0;
+                    let fromTube = this.state.tubes[i];
+                    let toTube = this.state.tubes[j];
+
+                    if (toTube.blocks.length > 0) score += 50; 
+                    
+                    let topColor = fromTube.blocks[fromTube.blocks.length - 1].color;
+                    let allSame = fromTube.blocks.every(b => b.color === topColor && !b.hidden);
+                    
+                    if (allSame && toTube.blocks.length === 0) score -= 100; 
+
+                    let sameColorCount = 0;
+                    for (let k = fromTube.blocks.length - 1; k >= 0; k--) {
+                        if (fromTube.blocks[k].color === topColor) sameColorCount++; else break;
+                    }
+                    if (fromTube.blocks.length > sameColorCount) score += 20;
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMove = { from: i, to: j };
+                    }
+                }
+            }
+        }
+        // Eğer tüm hamleler eksi puansa (veya hepsi eski duruma dönüyorsa) null döndür
+        return bestScore > -500 ? bestMove : null;
     },
 
     executePour: async function(fromIndex, toIndex) {
@@ -153,31 +273,22 @@ const GameApp = {
         this.checkWinCondition();
     },
 
-    // --- YENİ EFSANEVİ ZAFER DÖNGÜSÜ ---
-   checkWinCondition: function() {
-        // Bir bölümün kazanılması için: 
-        // 1. Hiçbir şişede karışık renk olmamalı.
-        // 2. Her renk kendi şişesinde tam kapasiteyle mühürlenmiş olmalı.
-        // 3. Hiçbir şişede "gizli (?)" blok kalmamalı.
-
+    checkWinCondition: function() {
         let isWon = true;
-        // Tüm renkleri ve miktarlarını bulalım
         let colorMap = {};
         this.state.tubes.forEach(t => {
             t.blocks.forEach(b => {
-                if (b.hidden) isWon = false; // Hala gizli blok varsa kazanamaz
+                if (b.hidden) isWon = false; 
                 colorMap[b.color] = (colorMap[b.color] || 0) + 1;
             });
         });
 
-        // Şimdi her şişeyi kontrol et
         for (let tube of this.state.tubes) {
-            if (tube.blocks.length === 0) continue; // Boş şişe sorun değil
+            if (tube.blocks.length === 0) continue; 
             
             const tubeColor = tube.blocks[0].color;
             const isUniform = tube.blocks.every(b => b.color === tubeColor);
             
-            // Eğer şişe uniform değilse veya o renkten oyunda hala başka yerlerde varsa
             if (!isUniform || tube.blocks.length !== colorMap[tubeColor]) {
                 isWon = false;
                 break;
@@ -185,55 +296,47 @@ const GameApp = {
         }
 
         if (isWon && this.state.winPhase === 0) {
-            this.handleLevelWinSequence(); // Zafer sinemasını başlat!
+            this.handleLevelWinSequence(); 
         } else if (this.state.movesLeft <= 0 && this.state.winPhase === 0) {
             setTimeout(() => { this.showDefeatModal(); }, 500);
         }
     },
 
     handleLevelWinSequence: function() {
-        // 1. AŞAMA: KUTLAMA (Konfeti, Yazı ve Meksika Dalgası)
         this.state.winPhase = 1;
         this.state.winStartTime = Date.now();
         AudioManager.play('win');
         
         document.getElementById('win-text-overlay').classList.remove('hidden');
 
-        // 2.5 Saniye kutlama sürer, sonra 2. AŞAMA: SİHİRLİ DUMAN
         setTimeout(() => {
             this.state.winPhase = 2;
             const smoke = document.getElementById('magic-smoke-transition');
             smoke.classList.remove('hidden');
             
-            // Dumanın yükselmesi için küçük bir gecikme
             requestAnimationFrame(() => {
                 smoke.classList.add('smoke-active');
             });
 
-            // 3. AŞAMA: ARKA PLANDA BÖLÜMÜ DEĞİŞTİR (Duman Ekranı Kapattığında)
             setTimeout(() => {
                 this.state.level++;
                 this.state.points += 50;
                 this.saveGame();
-                if(typeof ApiService !== 'undefined') ApiService.submitScore(this.state.level);
                 
-                // Bölümü dumanın arkasında gizlice yenile
                 this.startNewLevel(this.state.level);
                 
-                // Zafer yazısını gizle
                 document.getElementById('win-text-overlay').classList.add('hidden');
 
-                // 4. AŞAMA: DUMANI DAĞIT VE OYUNA DÖN
-                smoke.classList.remove('smoke-active'); // Duman aşağı iner
+                smoke.classList.remove('smoke-active'); 
                 
                 setTimeout(() => {
                     smoke.classList.add('hidden');
-                    this.state.winPhase = 0; // Kontrolleri oyuncuya geri ver
-                }, 800); // Dumanın inme süresi
+                    this.state.winPhase = 0; 
+                }, 800); 
                 
-            }, 800); // Dumanın ekranı kaplama süresi
+            }, 800); 
 
-        }, 2500); // Kutlama süresi
+        }, 2500); 
     },
 
     showDefeatModal: function() {
@@ -246,7 +349,7 @@ const GameApp = {
             ritualBtn.disabled = true;
         } else {
             ritualBtn.style.opacity = "1";
-            ritualBtn.innerText = "RİTÜEL YAP (+5 Hamle & Şişe)";
+            ritualBtn.innerText = "🔮 RİTÜEL YAP (+5 Hamle & Şişe)";
             ritualBtn.disabled = false;
         }
     },
@@ -256,29 +359,34 @@ const GameApp = {
             this.state.points -= 100;
             this.state.movesLeft += 5;
             document.getElementById('defeat-modal').classList.add('hidden');
+            this.saveGame(); 
             this.updateUI();
             AudioManager.play('click');
         } else { alert("Büyücüm, yeterli puanın yok!"); }
     },
 
     saveGame: function() {
-        const saveData = { level: this.state.level, points: this.state.points };
-        localStorage.setItem('bilgehan_save', JSON.stringify(saveData));
+        if (!ApiService.currentUser) return;
+        ApiService.saveProgress(this.state.level, this.state.points);
     },
 
-    loadGame: function() {
-        const data = localStorage.getItem('bilgehan_save');
-        if (data) {
-            const parsed = JSON.parse(data);
-            this.state.level = parsed.level;
-            this.state.points = parsed.points;
+  triggerDesperateHelp: async function() {
+        // GÜNCELLENDİ: Artık çok daha insaflı ve sabit! (25 Puan)
+        let ritualCost = 25;
+        
+        if (this.state.points < ritualCost) {
+            alert(`Bu karanlık ritüel için ${ritualCost} puana ihtiyacın var Büyücüm!`);
+            return;
         }
-    },
 
-    triggerDesperateHelp: async function() {
+        // Puanı düş ve veritabanına kaydet
+        this.state.points -= ritualCost;
+        this.saveGame();
+        this.updateUI();
+
         const ritualScreen = document.getElementById('magic-ritual-screen');
         ritualScreen.classList.remove('hidden');
-        await new Promise(r => setTimeout(r, 4000));
+        await new Promise(r => setTimeout(r, 3000));
         ritualScreen.classList.add('hidden');
         AudioManager.play('zonk');
         
@@ -287,13 +395,111 @@ const GameApp = {
         this.updateUI();
     },
 
+   // GÜNCELLENDİ: Sonsuz Döngü Korumalı Öğretici Sihir
+   // GÜNCELLENDİ: Sadece 1 Şişe Kapatana Kadar Çalışır ve Daha Ucuzdur!
+    executeAutoSolveSpell: async function() {
+        if (this.state.isAnimating || this.state.winPhase > 0) return;
+
+        // MALİYET DÜŞÜRÜLDÜ: İlk kullanım 30, sonra 60, 90...
+        let solveCost = 30 + (30 * this.state.autoSolveUsesInLevel);
+        
+        if (this.state.points < solveCost) {
+            alert(`Yapay Zeka yardımı için ${solveCost} puana ihtiyacın var!`);
+            return;
+        }
+
+        this.state.points -= solveCost;
+        this.state.autoSolveUsesInLevel++;
+        this.saveGame();
+        this.updateUI();
+        AudioManager.play('zonk');
+        
+        let visitedStates = new Set();
+        let stuckCounter = 0; 
+
+        // YENİ: Büyüye başlamadan önce ekrandaki kapalı (tamamlanmış) şişeleri say
+        let initialSealedCount = 0;
+        this.state.tubes.forEach(t => {
+            if(t.blocks.length > 0 && t.blocks.length === t.capacity && t.blocks.every(b => b.color === t.blocks[0].color && !b.hidden)) {
+                initialSealedCount++;
+            }
+        });
+
+        // DÖNGÜ: Oyun bitene veya güvenlik sınırına takılana kadar çalış
+        while (this.state.winPhase === 0 && stuckCounter < 50) {
+            let currentStateStr = this.state.tubes.map(t => t.blocks.map(b => b.hidden ? '?' : b.color).join(',')).join('|');
+            visitedStates.add(currentStateStr);
+
+            let nextMove = this.findBestMove(visitedStates);
+            
+            if (!nextMove) {
+                alert("Yapay Zeka tıkandı! Farklı bir hamle yapıp onu yönlendirebilirsin.");
+                break;
+            }
+
+            await this.executePour(nextMove.from, nextMove.to);
+            stuckCounter++;
+
+            // YENİ HAMLE SONRASI KONTROL: Yeni bir şişe kapandı mı?
+            let currentSealedCount = 0;
+            this.state.tubes.forEach(t => {
+                if(t.blocks.length > 0 && t.blocks.length === t.capacity && t.blocks.every(b => b.color === t.blocks[0].color && !b.hidden)) {
+                    currentSealedCount++;
+                }
+            });
+
+            // Eğer şu anki kapalı şişe sayısı, büyü başladığındaki sayıdan büyükse, hedef tamamlandı!
+            if (currentSealedCount > initialSealedCount) {
+                break; // Döngüyü kır, büyücüye kontrolü geri ver.
+            }
+
+            await new Promise(r => setTimeout(r, 400));
+        }
+    },
     setupEvents: function() {
+        const handleAuth = async (isLogin) => {
+            const user = document.getElementById('username-input').value.trim();
+            const pass = document.getElementById('password-input').value.trim();
+            const msgEl = document.getElementById('auth-message');
+            
+            
+            msgEl.style.color = "#f1c40f"; 
+            msgEl.innerText = "Büyü Kitaplarına Bakılıyor...";
+            
+            const result = await (isLogin ? ApiService.login(user, pass) : ApiService.register(user, pass));
+            
+            if (result.success) {
+                document.getElementById('login-overlay').style.display = 'none';
+                document.getElementById('start-overlay').style.display = 'flex'; 
+                
+            } else {
+                msgEl.style.color = "#e74c3c"; 
+                msgEl.innerText = result.message;
+            }
+        };
+
+        const btnLogin = document.getElementById('btn-login');
+        if(btnLogin) btnLogin.addEventListener('click', () => handleAuth(true));
+        
+        const btnRegister = document.getElementById('btn-register');
+        if(btnRegister) btnRegister.addEventListener('click', () => handleAuth(false));
+        
+        const btnLogout = document.getElementById('btn-logout');
+        if(btnLogout) {
+            btnLogout.addEventListener('click', () => {
+                ApiService.logout();
+                location.reload(); 
+            });
+        }
+
         document.getElementById('btn-start').addEventListener('click', () => {
             let elem = document.documentElement;
             if (elem.requestFullscreen) elem.requestFullscreen().catch(err => console.log(err));
             else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
             document.getElementById('start-overlay').style.display = 'none';
             AudioManager.play('click'); 
+            
+            this.startGameSession(); 
         });
 
         Renderer.canvas.addEventListener('touchstart', (e) => {
@@ -307,9 +513,15 @@ const GameApp = {
             this.handleInteraction(e.clientX, e.clientY);
         });
 
-        document.getElementById('btn-help').addEventListener('click', () => { this.triggerDesperateHelp(); });
+       document.getElementById('btn-help').addEventListener('click', () => { this.triggerDesperateHelp(); });
+
+        // --- YENİ: Sihirli Şişe Kapatma Butonu ---
+        document.getElementById('btn-auto-solve').addEventListener('click', () => {
+            this.executeAutoSolveSpell();
+        });
 
         document.getElementById('btn-buy-moves').addEventListener('click', () => this.buyExtraMoves());
+        
         document.getElementById('btn-ritual-retry').addEventListener('click', () => {
             if (!this.state.ritualUsedInLevel) {
                 document.getElementById('defeat-modal').classList.add('hidden');
@@ -319,6 +531,7 @@ const GameApp = {
                 this.updateUI();
             }
         });
+        
         document.getElementById('btn-restart-level').addEventListener('click', () => {
             document.getElementById('defeat-modal').classList.add('hidden');
             this.startNewLevel(this.state.level); 
@@ -326,13 +539,42 @@ const GameApp = {
         });
 
         document.getElementById('btn-leaderboard').addEventListener('click', async () => {
-            if(typeof ApiService !== 'undefined') {
-                ApiService.getLeaderboard().then(list => {
-                    console.log("Skor Tablosu: ", list);
-                    alert("Liderlik tablosu konsola yazdırıldı!");
-                }).catch(e => console.log("Liderlik tablosu henüz bağlanmadı."));
+            const modal = document.getElementById('leaderboard-modal');
+            const listDiv = document.getElementById('leaderboard-list');
+            modal.classList.remove('hidden');
+            listDiv.innerHTML = '<p style="text-align:center; color:#bdc3c7;">Parşömenler Okunuyor...</p>';
+            
+            try {
+                const list = await ApiService.getLeaderboard();
+                if (!list || list.length === 0) {
+                    listDiv.innerHTML = '<p style="text-align:center; color:#bdc3c7;">Henüz hiç büyücü yok.</p>';
+                    return;
+                }
+                
+                let html = '<table style="width:100%; color:white; border-collapse: collapse;">';
+                html += '<tr style="border-bottom: 1px solid #34495e; color:#f1c40f;"><th style="padding:5px; text-align:left;">Büyücü</th><th style="padding:5px;">Sv.</th><th style="padding:5px; text-align:right;">Puan</th></tr>';
+                
+                list.forEach((item, index) => {
+                    let rankColor = index === 0 ? '#f1c40f' : (index === 1 ? '#bdc3c7' : (index === 2 ? '#d35400' : 'white'));
+                    html += `<tr style="color:${rankColor};">`;
+                    html += `<td style="padding:8px 5px; border-bottom: 1px solid rgba(255,255,255,0.05);">${index + 1}. ${item.username}</td>`;
+                    html += `<td style="padding:8px 5px; text-align:center; border-bottom: 1px solid rgba(255,255,255,0.05);">${item.level}</td>`;
+                    html += `<td style="padding:8px 5px; text-align:right; border-bottom: 1px solid rgba(255,255,255,0.05);">${item.points}</td>`;
+                    html += `</tr>`;
+                });
+                html += '</table>';
+                listDiv.innerHTML = html;
+            } catch (e) {
+                listDiv.innerHTML = '<p style="text-align:center; color:#e74c3c;">Tabloya ulaşılamadı!</p>';
             }
         });
+
+        const btnCloseLeaderboard = document.getElementById('btn-close-leaderboard');
+        if(btnCloseLeaderboard) {
+            btnCloseLeaderboard.addEventListener('click', () => {
+                document.getElementById('leaderboard-modal').classList.add('hidden');
+            });
+        }
     },
 
     updateUI: function() {

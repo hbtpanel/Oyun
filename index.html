@@ -20,9 +20,11 @@
 </div>
 
         
-        <div class="bottom-bar">
-            <button id="btn-leaderboard">Skor Tablosu</button>
-            <button id="btn-help" class="desperate-btn">Yardım!</button>
+     <div class="bottom-bar">
+            <button id="btn-leaderboard">🏆 Skorlar</button>
+            <button id="btn-logout" style="border-color: #e67e22; color: #e67e22;">🚪 Çıkış</button>
+            <button id="btn-auto-solve" class="desperate-btn" style="background: rgba(155, 89, 182, 0.2); border-color: #9b59b6; color: #9b59b6;">✨ Şişe Kapat</button>
+            <button id="btn-help" class="desperate-btn">🔮 Ritüel</button>
         </div>
     </div>
 
@@ -42,9 +44,30 @@
             </div>
         </div>
     </div>
+    <div id="login-overlay">
+        <div class="modal-content" style="max-width: 300px;">
+            <h1 class="glow-text" style="font-size: 28px;">BÜYÜCÜ KİMLİĞİ</h1>
+            <div class="auth-form">
+                <input type="text" id="username-input" placeholder="Büyücü Adı (Örn: Merlin)" autocomplete="off">
+                <input type="password" id="password-input" placeholder="Gizli Parola">
+                <button id="btn-login" style="background-color: #2ecc71; color: white; border:none;">Giriş Yap</button>
+                <button id="btn-register" class="desperate-btn">Yeni Kayıt Ol</button>
+                <p id="auth-message" style="color: #e74c3c; margin-top: 10px; font-size: 14px; min-height: 20px;"></p>
+            </div>
+        </div>
+    </div>
     <div id="start-overlay">
         <h1 class="glow-text">BİLGEHAN BÜYÜK ADAM</h1>
         <button id="btn-start">OYUNA BAŞLA</button>
+    </div>
+    <div id="leaderboard-modal" class="hidden" style="position: absolute; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); backdrop-filter: blur(5px); z-index:250; display:flex; align-items:center; justify-content:center; flex-direction:column; pointer-events:auto;">
+        <div class="modal-content" style="width: 350px;">
+            <h2 style="color: #f1c40f; margin-bottom: 20px;">🏆 EN İYİ BÜYÜCÜLER</h2>
+            <div id="leaderboard-list" style="text-align: left; margin-bottom: 20px; max-height: 300px; overflow-y: auto;">
+                <p>Yükleniyor...</p>
+            </div>
+            <button id="btn-close-leaderboard" class="desperate-btn" style="width: 100%;">Tabloyu Kapat</button>
+        </div>
     </div>
     <div id="win-text-overlay" class="hidden">
         <h1 class="victory-text">BÜYÜ TAMAM!</h1>

@@ -40,22 +40,37 @@ const Renderer = {
         this.tubeCoords = []; 
         this.activePourState = null;
 
-        // --- ADIM 1: TÜM KOORDİNATLARI ÖNCEDEN HESAPLA ---
+       // --- ADIM 1: TÜM KOORDİNATLARI ÖNCEDEN HESAPLA ---
+        // YENİ: Mobilde yan yana çok şişe dizilmesini engelle (Maks 4)
+        this.maxTubesPerRow = this.canvas.width < 600 ? Math.min(4, Math.ceil(tubes.length / 2)) : 5;
+
         const totalRows = Math.ceil(tubes.length / this.maxTubesPerRow);
         const maxCapacity = Math.max(...tubes.map(t => t.capacity));
         const maxTubeHeight = maxCapacity * this.baseBlockHeight;
 
         const totalGapY = (totalRows - 1) * this.tubeGapY;
         const totalGridHeight = totalRows * maxTubeHeight + totalGapY;
-        const desiredHeight = this.canvas.height * 0.8; 
         
-        const scale = Math.min(1, desiredHeight / totalGridHeight);
+        // YENİ: Hem Yüksekliği Hem de Genişliği hesaba kat (Üst üste binmeyi Kesin Engeller!)
+        const maxTubesInRow = Math.min(tubes.length, this.maxTubesPerRow);
+        const totalGridWidth = (maxTubesInRow * this.baseTubeWidth) + ((maxTubesInRow - 1) * this.tubeGapX);
+
+        const availableHeight = this.canvas.height * 0.65; // Üst ve alt menülere yer bırak
+        const availableWidth = this.canvas.width * 0.90;   // Sağdan soldan nefes payı bırak
+
+        const scaleHeight = availableHeight / totalGridHeight;
+        const scaleWidth = availableWidth / totalGridWidth;
+        
+        // Hangisi daha dar/kısaysa ona göre ölçekle
+        const scale = Math.min(1, Math.min(scaleHeight, scaleWidth));
+
         this.tubeWidth = this.baseTubeWidth * scale;
         this.blockHeight = this.baseBlockHeight * scale;
         this.currentTubeGapX = this.tubeGapX * scale;
         this.currentTubeGapY = this.tubeGapY * scale;
 
-        const gridStartY = (this.canvas.height - (totalRows * maxTubeHeight * scale + totalGapY * scale)) / 2;
+        // Izgarayı üst ve alt UI (Arayüz) elementleriyle çakışmayacak şekilde konumlandır
+        const gridStartY = (this.canvas.height - (totalRows * maxTubeHeight * scale + totalGapY * scale)) / 2.2;
 
         for (let i = 0; i < tubes.length; i++) {
             const currentRow = Math.floor(i / this.maxTubesPerRow);
@@ -94,7 +109,14 @@ const Renderer = {
             }
             y += yOffset;
 
-            if (gameState.selectedTube === i && !gameState.pouringData) y -= 25; 
+           if (gameState.selectedTube === i && !gameState.pouringData) y -= 25; 
+
+            // YENİ: Başlangıç (Spawn) Animasyonu (Şişeler aşağıdan zıplayarak gelir)
+            let spawnElapsed = Date.now() - (gameState.levelStartTime || 0);
+            if (spawnElapsed < 800) {
+                let easeOut = 1 - Math.pow(1 - (spawnElapsed / 800), 3); // Yumuşak çıkış
+                y += (this.canvas.height - y) * (1 - easeOut); 
+            }
 
             this.drawTube(x, y, tubes[i], baseCoord.height, 0, time, gameState, i, false);
         }
@@ -153,13 +175,25 @@ const Renderer = {
     },
 
     drawTube: function(x, y, tubeData, actualTubeHeight, angle, time, gameState, tubeIndex, isFlying) {
+        // Tıpa animasyonu için zamanlayıcı
+        const sealAnimTime = gameState.winPhase === 1 ? Date.now() - gameState.winStartTime : 0;
+
         this.ctx.save();
         
-        // Dönme Merkezini Şişenin Üst Ağzı Olarak Ayarla
+        // Dönme Merkezi
         this.ctx.translate(x + this.tubeWidth/2, y);
         if (angle !== 0) this.ctx.rotate(angle);
         this.ctx.translate(-(x + this.tubeWidth/2), -y);
 
+        // --- SEÇİM PARLAMASI ---
+        if (gameState.selectedTube === tubeIndex && !isFlying) {
+            this.ctx.shadowColor = "#f1c40f";
+            this.ctx.shadowBlur = 25;
+        } else {
+            this.ctx.shadowBlur = 0;
+        }
+
+        // --- ŞİŞE DIŞ ÇERÇEVESİ VE CLIPPING ---
         this.ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
         this.ctx.lineWidth = 3;
         this.ctx.beginPath();
@@ -168,22 +202,11 @@ const Renderer = {
         this.ctx.quadraticCurveTo(x, y + actualTubeHeight, x + this.tubeWidth/2, y + actualTubeHeight);
         this.ctx.quadraticCurveTo(x + this.tubeWidth, y + actualTubeHeight, x + this.tubeWidth, y + actualTubeHeight - this.tubeWidth/2);
         this.ctx.lineTo(x + this.tubeWidth, y);
-        this.ctx.stroke();
-
+        
         this.ctx.save();
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + 2, y);
-        this.ctx.lineTo(x + 2, y + actualTubeHeight - this.tubeWidth/2);
-        this.ctx.quadraticCurveTo(x + 2, y + actualTubeHeight - 2, x + this.tubeWidth/2, y + actualTubeHeight - 2);
-        this.ctx.quadraticCurveTo(x + this.tubeWidth - 2, y + actualTubeHeight - 2, x + this.tubeWidth - 2, y + actualTubeHeight - this.tubeWidth/2);
-        this.ctx.lineTo(x + this.tubeWidth - 2, y);
-        this.ctx.closePath();
-        this.ctx.clip(); 
+        this.ctx.clip(); // Taşan sıvıları gizlemek için
 
         const blocksArray = tubeData.blocks;
-
-        // --- YENİ: SIVI BOŞALMA/DOLMA ZAMANLAMASI ---
-        // Sıvılar uçuş sırasında değil, sadece dökülme aşamasında (0.15 - 0.85) değişir
         let relativeProg = 0;
         if (gameState.pouringData) {
             let p = gameState.pouringData.progress;
@@ -191,7 +214,7 @@ const Renderer = {
             else if (p > 0.85) relativeProg = 1;
         }
 
-        // Kaynak (Uçan) şişenin boşalması
+        // --- KAYNAK ŞİŞENİN BOŞALMASI ---
         for (let j = 0; j < blocksArray.length; j++) {
             let blockObj = blocksArray[j];
             let actualBlockH = this.blockHeight;
@@ -220,7 +243,7 @@ const Renderer = {
             }
         }
         
-        // Hedef şişenin dolması
+        // --- HEDEF ŞİŞENİN DOLMASI (Silinmiş Olan Eksik Kısım Geri Geldi!) ---
         if (gameState.pouringData && gameState.pouringData.to === tubeIndex) {
              const totalFilling = gameState.pouringData.blockCount;
              const baseLength = blocksArray.length; 
@@ -240,18 +263,23 @@ const Renderer = {
              }
         }
         
-        this.ctx.restore(); 
-
-        this.ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-        this.ctx.fillRect(x + 5, y + 5, this.tubeWidth - 10, actualTubeHeight - 10);
+        this.ctx.restore(); // Clipping bitti
         
-       // GÜNCEL Tıpa Efekti: Sadece renk tamamen bu şişeye hapsolduysa tıpa tak
+        // Şişe Camını ve Yansımayı Çiz
+        this.ctx.shadowBlur = 0;
+        this.ctx.stroke(); 
+        
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+        this.ctx.beginPath();
+        this.ctx.rect(x + 6, y + 15, this.tubeWidth * 0.15, actualTubeHeight - 30);
+        this.ctx.fill();
+
+        // --- YENİ KRİSTAL TIPA VE ANİMASYONU ---
         let isSealed = false;
         if (blocksArray.length > 0 && blocksArray.length === tubeData.capacity) {
             const tubeColor = blocksArray[0].color;
             const allSame = blocksArray.every(b => b.color === tubeColor && !b.hidden);
             
-            // Tüm oyundaki bu renkteki blokları say
             const colorTotal = gameState.tubes.reduce((acc, curr) => 
                 acc + curr.blocks.filter(b => b.color === tubeColor).length, 0);
 
@@ -261,19 +289,68 @@ const Renderer = {
         }
         
         if (isSealed && angle === 0 && !isFlying) {
-            this.ctx.fillStyle = "#8b5a2b"; 
-            this.ctx.fillRect(x + this.tubeWidth*0.2, y - 8, this.tubeWidth*0.6, 12);
-            this.ctx.fillRect(x + this.tubeWidth*0.15, y - 12, this.tubeWidth*0.7, 4);
+            this.ctx.save();
             
-            this.ctx.shadowColor = "#f1c40f";
-            this.ctx.shadowBlur = 10;
-            this.ctx.strokeStyle = "#f1c40f";
-            this.ctx.lineWidth = 2;
+            let stopperY = y;
+            let stopperAlpha = 1;
+
+            // Yukarıdan Süzülme Animasyonu
+            if (gameState.winPhase === 1) {
+                const delay = tubeIndex * 150; 
+                const duration = 600; 
+                const adjustedTime = Math.max(0, sealAnimTime - delay);
+                
+                if (adjustedTime < duration) {
+                    let progress = adjustedTime / duration;
+                    progress = 1 - Math.pow(1 - progress, 3);
+                    const dropDistance = 60; 
+                    stopperY = (y - dropDistance) + (dropDistance * progress);
+                    stopperAlpha = progress; 
+                }
+            }
+            
+            this.ctx.globalAlpha = stopperAlpha;
+            const stopperWidth = this.tubeWidth * 1.1;
+            const stopperHeight = 25;
+            const sX = x - (stopperWidth - this.tubeWidth) / 2;
+            const sY = stopperY - stopperHeight / 1.5;
+
+            // Taban (İçe giren gri kısım)
+            this.ctx.fillStyle = "#bdc3c7"; 
             this.ctx.beginPath();
-            this.ctx.moveTo(x + this.tubeWidth*0.3, y - 6);
-            this.ctx.lineTo(x + this.tubeWidth*0.7, y - 6);
-            this.ctx.stroke();
-            this.ctx.shadowBlur = 0; 
+            this.ctx.roundRect(x + 5, sY + 5, this.tubeWidth - 10, stopperHeight, 5);
+            this.ctx.fill();
+
+            // Kristal Parlak Üst Kısım
+            const crystalGradient = this.ctx.createLinearGradient(sX, sY, sX + stopperWidth, sY + stopperHeight);
+            const tubeColor = blocksArray[0].color;
+            crystalGradient.addColorStop(0, this.hexToRgba(tubeColor, 0.6));
+            crystalGradient.addColorStop(0.5, this.hexToRgba(tubeColor, 1));
+            crystalGradient.addColorStop(1, this.hexToRgba(tubeColor, 0.8));
+
+            this.ctx.fillStyle = crystalGradient;
+            this.ctx.shadowColor = tubeColor; 
+            this.ctx.shadowBlur = 15;
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(sX + stopperWidth * 0.2, sY);
+            this.ctx.lineTo(sX + stopperWidth * 0.8, sY);
+            this.ctx.lineTo(sX + stopperWidth, sY + stopperHeight * 0.6);
+            this.ctx.lineTo(sX + stopperWidth * 0.5, sY + stopperHeight);
+            this.ctx.lineTo(sX, sY + stopperHeight * 0.6);
+            this.ctx.closePath();
+            this.ctx.fill();
+
+            // Kristal Yansıması
+            this.ctx.shadowBlur = 0;
+            this.ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+            this.ctx.beginPath();
+            this.ctx.moveTo(sX + stopperWidth * 0.3, sY + 5);
+            this.ctx.lineTo(sX + stopperWidth * 0.5, sY + 5);
+            this.ctx.lineTo(sX + stopperWidth * 0.4, sY + stopperHeight * 0.4);
+            this.ctx.fill();
+
+            this.ctx.restore();
         }
 
         this.ctx.restore(); 
@@ -296,11 +373,31 @@ const Renderer = {
         this.ctx.lineTo(x, y + height + 2);
         this.ctx.closePath();
         
-        let gradient = this.ctx.createRadialGradient(x + width/2, y + height/2, height/4, x + width/2, y + height/2, width/2);
+       let gradient = this.ctx.createRadialGradient(x + width/2, y + height/2, height/4, x + width/2, y + height/2, width/2);
         gradient.addColorStop(0, this.hexToRgba(color, 1));
         gradient.addColorStop(1, this.hexToRgba(color, 0.8)); 
         this.ctx.fillStyle = gradient;
         this.ctx.fill();
+
+        // YENİ: Sıvı Katmanlarını Ayıran Çizgi (Renklerin daha net seçilmesi için)
+        this.ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(x + width, y);
+        this.ctx.stroke();
+
+        // YENİ: Yukarı Çıkan Büyülü Baloncuklar
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+        let bubbleCount = Math.floor(width / 15);
+        for (let b = 0; b < bubbleCount; b++) {
+            // Zamana ve indekslere bağlı olarak baloncukların yukarı süzülmesi
+            let bY = y + height - ((time * 0.05 + b * 20 + index * 50) % height);
+            let bX = x + 5 + ((time * 0.01 + b * 10) % (width - 10));
+            this.ctx.beginPath();
+            this.ctx.arc(bX, bY, 1.5 + (b % 2), 0, Math.PI * 2);
+            this.ctx.fill();
+        }
     },
 
     // --- YENİ: GERÇEKÇİ KISA AKIŞ (Hortum Görüntüsü İptal) ---

@@ -1,35 +1,45 @@
 const LevelGenerator = {
-    colors: ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c', '#e84393'],
+    // TAMAMEN ZIT, AYIRT EDİLMESİ EN KOLAY ANA RENKLER
+    colors: [
+        '#FF0000', // 1. Tam Kırmızı
+        '#0000FF', // 2. Tam Mavi
+        '#00FF00', // 3. Tam Yeşil
+        '#FFFF00', // 4. Tam Sarı
+        '#FF00FF', // 5. Parlak Pembe / Macenta
+        '#00FFFF', // 6. Açık Mavi / Cyan
+        '#FFA500', // 7. Turuncu
+        '#800080', // 8. Koyu Mor
+        '#8B4513', // 9. Kahverengi
+        '#FFFFFF'  // 10. Saf Beyaz
+    ],
+
+
 
     generate: function(levelNumber) {
         const colorCount = Math.min(3 + Math.floor(levelNumber / 4), this.colors.length);
-        // 15. Seviyeden sonra darboğaz: Sadece 1 boş şişe!
-        const emptyCount = levelNumber >= 15 ? 1 : 2; 
+        // Her zaman 2 boş şişe (Darboğazı engellemek için)
+        const emptyCount = 2; 
         const totalTubes = colorCount + emptyCount;
         
         const shuffleSteps = levelNumber * 8 + 10;
-       // --- YENİ ZORLUK ÇARPANLARI ---
-        let multiplier = 2; // Varsayılan (Kalfa & Usta)
-        if (levelNumber <= 5) multiplier = 3; // Çırak
-        else if (levelNumber >= 31) multiplier = 1.5; // Bilgehan (x1.5 zor)
+        let multiplier = 2; 
+        if (levelNumber <= 5) multiplier = 3; 
+        else if (levelNumber >= 31) multiplier = 1.5; 
 
         const moves = Math.floor(shuffleSteps * multiplier);
-
         let tubes = [];
 
         // 1. Çözülmüş (Kazanılmış) durumu yarat
         for (let i = 0; i < totalTubes; i++) {
-            let capacity = 4; // Standart kapasite
+            let capacity = 4; 
             
-            // 10. Seviyeden sonra şişe boyları (kapasiteleri) değişir!
             if (levelNumber > 10 && i < colorCount) {
                 capacity = (i % 2 === 0) ? 5 : 3; 
             }
-            if (i >= colorCount) capacity = 4; // Boş şişeler standart kalır
+            if (i >= colorCount) capacity = 4; 
 
             let blocks = [];
             if (i < colorCount) {
-                // Şişeyi kendi kapasitesi kadar aynı renkle doldur
                 for (let c = 0; c < capacity; c++) {
                     blocks.push({ color: this.colors[i], hidden: false });
                 }
@@ -37,14 +47,38 @@ const LevelGenerator = {
             tubes.push({ capacity: capacity, blocks: blocks });
         }
 
-        // 2. Geriye Doğru Karıştır (Reverse Shuffling)
-        for (let step = 0; step < shuffleSteps; step++) {
+        // 2. Geriye Doğru Akıllı Karıştır (Kilitlenmeyi önleyen sistem)
+        let validShuffles = 0;
+        let attempts = 0;
+        
+        while (validShuffles < shuffleSteps && attempts < shuffleSteps * 50) {
+            attempts++;
             let src = Math.floor(Math.random() * totalTubes);
             let target = Math.floor(Math.random() * totalTubes);
 
-            if (src !== target && tubes[src].blocks.length > 0 && tubes[target].blocks.length < tubes[target].capacity) {
-                let liquid = tubes[src].blocks.pop();
-                tubes[target].blocks.push(liquid);
+            if (src === target) continue;
+
+            let srcTube = tubes[src];
+            let targetTube = tubes[target];
+
+            if (srcTube.blocks.length === 0) continue;
+            if (targetTube.blocks.length >= targetTube.capacity) continue;
+
+            let liquid = srcTube.blocks[srcTube.blocks.length - 1]; 
+            
+            let canReversePour = false;
+            if (srcTube.blocks.length === 1) {
+                canReversePour = true; 
+            } else {
+                let blockUnder = srcTube.blocks[srcTube.blocks.length - 2];
+                if (blockUnder.color === liquid.color) {
+                    canReversePour = true; 
+                }
+            }
+
+            if (canReversePour) {
+                targetTube.blocks.push(srcTube.blocks.pop());
+                validShuffles++;
             }
         }
 
@@ -52,15 +86,14 @@ const LevelGenerator = {
         if (levelNumber > 5) {
             tubes.forEach(t => {
                 if (t.blocks.length >= 3) {
-                    t.blocks[0].hidden = true; // En alt bloğu gizle
+                    t.blocks[0].hidden = true; 
                     if (levelNumber > 12 && t.blocks.length >= 4) {
-                        t.blocks[1].hidden = true; // Zor seviyelerde alttan 2. bloğu da gizle
+                        t.blocks[1].hidden = true; 
                     }
                 }
             });
         }
 
-        // Kural: En üstteki blok ASLA gizli olamaz (oynanabilirlik için)
         tubes.forEach(t => {
             if (t.blocks.length > 0) t.blocks[t.blocks.length - 1].hidden = false;
         });
