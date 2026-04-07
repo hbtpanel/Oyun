@@ -19,6 +19,11 @@ body, html {
     background-size: cover;
     background-position: center bottom;
     background-repeat: no-repeat;
+
+    /* --- YENİ: MOBİL KORUMALAR --- */
+    touch-action: none; /* Ekranı kaydırmayı ve yenilemeyi (pull-to-refresh) tamamen engeller */
+    user-select: none; /* Metinlerin yanlışlıkla seçilip mavi olmasını engeller */
+    -webkit-user-select: none; /* Safari (iPhone) koruması */
 }
 
 /* YENİ: Şişelerin net görünmesi için arka plan görselinin üzerine sihirli bir karartma (Vignette) filtresi */

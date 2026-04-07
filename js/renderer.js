@@ -17,15 +17,30 @@ const Renderer = {
     // YENİ: Animasyon sırasında uçan şişenin anlık koordinatları
     activePourState: null, 
 
+   lastTubeCount: 0, // Optimizasyon için eklendi
+
     init: function() {
         this.ctx = this.canvas.getContext('2d');
         this.resize();
-        window.addEventListener('resize', () => this.resize());
+        window.addEventListener('resize', () => { this.lastTubeCount = 0; this.resize(); });
     },
 
     resize: function() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+        // --- YENİ: RETİNA EKRAN (MOBİL NETLİK) OPTİMİZASYONU ---
+        const dpr = window.devicePixelRatio || 1;
+        
+        // CSS ile ekranda kaplayacağı gerçek alan
+        this.canvas.style.width = window.innerWidth + 'px';
+        this.canvas.style.height = window.innerHeight + 'px';
+        
+        // Canvas'ın iç çözünürlüğü (dpr ile çarpılmış)
+        this.canvas.width = window.innerWidth * dpr;
+        this.canvas.height = window.innerHeight * dpr;
+        
+        // Çizimleri bu yeni çözünürlüğe göre ölçekle
+        this.ctx.scale(dpr, dpr);
+        
+        this.lastTubeCount = 0; // Yeniden hesaplama yapılması için sıfırla
     },
 
     // Matematiksel Yumuşatma (Lerp) - Şişenin uçuşunu pürüzsüz yapar
@@ -33,76 +48,89 @@ const Renderer = {
         return start * (1 - t) + end * t;
     },
 
-   draw: function(gameState, time) {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  draw: function(gameState, time) {
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
 
-        // --- YENİ: SOLUK VE KOYU ARKA PLAN ---
-        this.ctx.fillStyle = "#0f1923"; 
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
-        let vignette = this.ctx.createRadialGradient(
-            this.canvas.width/2, this.canvas.height/2, this.canvas.width*0.2,
-            this.canvas.width/2, this.canvas.height/2, this.canvas.width*0.8
-        );
-        vignette.addColorStop(0, "rgba(0, 0, 0, 0)"); 
-        vignette.addColorStop(1, "rgba(0, 0, 0, 0.6)"); 
-        this.ctx.fillStyle = vignette;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        // -------------------------------------
+        this.ctx.clearRect(0, 0, winW, winH);
+
+        // Çifte karartmayı önlemek için vignette sildik, sadece soluk arka plan (Performans artışı)
+        this.ctx.fillStyle = "rgba(15, 25, 35, 0.7)"; 
+        this.ctx.fillRect(0, 0, winW, winH);
 
         const tubes = gameState.tubes;
-        this.tubeCoords = []; 
         this.activePourState = null;
 
-       // --- ADIM 1: TÜM KOORDİNATLARI ÖNCEDEN HESAPLA ---
-        // YENİ: Mobilde yan yana çok şişe dizilmesini engelle (Maks 4)
-        this.maxTubesPerRow = this.canvas.width < 600 ? Math.min(4, Math.ceil(tubes.length / 2)) : 5;
-
-        const totalRows = Math.ceil(tubes.length / this.maxTubesPerRow);
-        const maxCapacity = Math.max(...tubes.map(t => t.capacity));
-        const maxTubeHeight = maxCapacity * this.baseBlockHeight;
-
-        const totalGapY = (totalRows - 1) * this.tubeGapY;
-        const totalGridHeight = totalRows * maxTubeHeight + totalGapY;
-        
-        // YENİ: Hem Yüksekliği Hem de Genişliği hesaba kat (Üst üste binmeyi Kesin Engeller!)
-        const maxTubesInRow = Math.min(tubes.length, this.maxTubesPerRow);
-        const totalGridWidth = (maxTubesInRow * this.baseTubeWidth) + ((maxTubesInRow - 1) * this.tubeGapX);
-
-        const availableHeight = this.canvas.height * 0.65; // Üst ve alt menülere yer bırak
-        const availableWidth = this.canvas.width * 0.90;   // Sağdan soldan nefes payı bırak
-
-        const scaleHeight = availableHeight / totalGridHeight;
-        const scaleWidth = availableWidth / totalGridWidth;
-        
-        // Hangisi daha dar/kısaysa ona göre ölçekle
-        const scale = Math.min(1, Math.min(scaleHeight, scaleWidth));
-
-        this.tubeWidth = this.baseTubeWidth * scale;
-        this.blockHeight = this.baseBlockHeight * scale;
-        this.currentTubeGapX = this.tubeGapX * scale;
-        this.currentTubeGapY = this.tubeGapY * scale;
-
-        // Izgarayı üst ve alt UI (Arayüz) elementleriyle çakışmayacak şekilde konumlandır
-        const gridStartY = (this.canvas.height - (totalRows * maxTubeHeight * scale + totalGapY * scale)) / 2.2;
-
-        for (let i = 0; i < tubes.length; i++) {
-            const currentRow = Math.floor(i / this.maxTubesPerRow);
-            const currentCol = i % this.maxTubesPerRow;
+        // --- AKILLI YERLEŞİM (MAX ALAN) VE OPTİMİZASYON ---
+        if (this.lastTubeCount !== tubes.length) {
+            this.tubeCoords = []; 
             
-            let numTubesInRow = this.maxTubesPerRow;
-            if (currentRow === totalRows - 1 && tubes.length % this.maxTubesPerRow !== 0) {
-                numTubesInRow = tubes.length % this.maxTubesPerRow;
+            const N = tubes.length;
+            const maxCapacity = Math.max(...tubes.map(t => t.capacity));
+            const maxTubeHeight = maxCapacity * this.baseBlockHeight;
+            
+            // Kullanılabilir alanı biraz daha genişletelim (Ekrana daha fazla yayılsınlar)
+            const availableHeight = winH * 0.68; 
+            const availableWidth = winW * 0.95;   
+            
+            let bestCols = 4;
+            let bestScale = 0;
+            
+            // Ekran boyutuna göre maksimum yan yana dizilebilecek şişe sınırları
+            const maxColLimit = winW < 600 ? 6 : 10;
+            const minColLimit = Math.min(3, N); // En az 3 sütun
+
+            // Tüm dizilim ihtimallerini dene, en büyük şişe boyutunu vereni seç
+            for (let c = minColLimit; c <= maxColLimit; c++) {
+                if (c > N) break;
+                
+                let r = Math.ceil(N / c); // Bu sütun sayısına göre satır sayısı
+                let gridW = c * this.baseTubeWidth + (c - 1) * this.tubeGapX;
+                let gridH = r * maxTubeHeight + (r - 1) * this.tubeGapY;
+                
+                let scaleW = availableWidth / gridW;
+                let scaleH = availableHeight / gridH;
+                let currentScale = Math.min(scaleW, scaleH);
+                
+                // Eğer bu dizilim şişeleri daha büyük yapıyorsa, bu dizilimi seç!
+                if (currentScale > bestScale) {
+                    bestScale = currentScale;
+                    bestCols = c;
+                }
             }
 
-            const rowWidth = (numTubesInRow * this.tubeWidth) + ((numTubesInRow - 1) * this.currentTubeGapX);
-            const rowStartX = (this.canvas.width - rowWidth) / 2;
-
-            let actualTubeHeight = tubes[i].capacity * this.blockHeight;
-            let x = rowStartX + currentCol * (this.tubeWidth + this.currentTubeGapX);
-            let y = gridStartY + currentRow * ((maxTubeHeight * scale) + this.currentTubeGapY) + ((maxTubeHeight * scale) - actualTubeHeight);
+            this.maxTubesPerRow = bestCols;
+            const totalRows = Math.ceil(N / this.maxTubesPerRow);
+            const totalGapY = (totalRows - 1) * this.tubeGapY;
             
-            this.tubeCoords[i] = { x, y, width: this.tubeWidth, height: actualTubeHeight };
+            // Şişelerin ekranı yırtacak kadar devasa olmasını engelle (Maks 1.15 katı)
+            const scale = Math.min(1.15, bestScale);
+
+            this.tubeWidth = this.baseTubeWidth * scale;
+            this.blockHeight = this.baseBlockHeight * scale;
+            this.currentTubeGapX = this.tubeGapX * scale;
+            this.currentTubeGapY = this.tubeGapY * scale;
+
+            const actualTotalGridHeight = totalRows * (maxTubeHeight * scale) + (totalGapY * scale);
+            const gridStartY = (winH - actualTotalGridHeight) / 2.2;
+
+            for (let i = 0; i < tubes.length; i++) {
+                const currentRow = Math.floor(i / this.maxTubesPerRow);
+                const currentCol = i % this.maxTubesPerRow;
+                let numTubesInRow = this.maxTubesPerRow;
+                if (currentRow === totalRows - 1 && tubes.length % this.maxTubesPerRow !== 0) {
+                    numTubesInRow = tubes.length % this.maxTubesPerRow;
+                }
+
+                const rowWidth = (numTubesInRow * this.tubeWidth) + ((numTubesInRow - 1) * this.currentTubeGapX);
+                const rowStartX = (winW - rowWidth) / 2;
+                let actualTubeHeight = tubes[i].capacity * this.blockHeight;
+                let x = rowStartX + currentCol * (this.tubeWidth + this.currentTubeGapX);
+                let y = gridStartY + currentRow * ((maxTubeHeight * scale) + this.currentTubeGapY) + ((maxTubeHeight * scale) - actualTubeHeight);
+                
+                this.tubeCoords[i] = { x, y, width: this.tubeWidth, height: actualTubeHeight };
+            }
+            this.lastTubeCount = tubes.length;
         }
 
         // --- ADIM 2: SABİT ŞİŞELERİ ÇİZ (Arka Plan) ---
@@ -125,11 +153,11 @@ const Renderer = {
 
            if (gameState.selectedTube === i && !gameState.pouringData) y -= 25; 
 
-            // YENİ: Başlangıç (Spawn) Animasyonu (Şişeler aşağıdan zıplayarak gelir)
+           // YENİ: Başlangıç (Spawn) Animasyonu (Şişeler aşağıdan zıplayarak gelir)
             let spawnElapsed = Date.now() - (gameState.levelStartTime || 0);
             if (spawnElapsed < 800) {
-                let easeOut = 1 - Math.pow(1 - (spawnElapsed / 800), 3); // Yumuşak çıkış
-                y += (this.canvas.height - y) * (1 - easeOut); 
+                let easeOut = 1 - Math.pow(1 - (spawnElapsed / 800), 3); 
+                y += (window.innerHeight - y) * (1 - easeOut); 
             }
 
             this.drawTube(x, y, tubes[i], baseCoord.height, 0, time, gameState, i, false);
@@ -586,13 +614,14 @@ const Renderer = {
 
     // --- YENİ: MERKEZİ RİTÜEL ÇEMBERİ VE BÜYÜ TAMAMLANDI MESAJI ---
     drawWinMessage: function(time) {
-        // Ekranın tam geometrik merkezi
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
         
-        // Mobilde ekran boyutuna göre ölçeklenen boyutlar
-        const circleRadius = Math.min(150, this.canvas.width * 0.35); 
-        const fontSize = Math.min(45, this.canvas.width * 0.08);
+        const centerX = winW / 2;
+        const centerY = winH / 2;
+        
+        const circleRadius = Math.min(150, winW * 0.35); 
+        const fontSize = Math.min(45, winW * 0.08);
 
         this.ctx.save();
 

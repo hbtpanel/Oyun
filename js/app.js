@@ -81,8 +81,9 @@ const GameApp = {
         requestAnimationFrame((time) => this.loop(time));
     },
 
-    handleInteraction: function(x, y) {
-        if (this.state.isAnimating || this.state.winPhase > 0) return;
+   handleInteraction: function(x, y) {
+        // YENİ: isAutoSolving (Yapay zeka büyüsü) çalışırken oyuncu tıklayamaz!
+        if (this.state.isAnimating || this.state.winPhase > 0 || this.state.isAutoSolving) return;
 
         const rect = Renderer.canvas.getBoundingClientRect();
         const canvasX = x - rect.left;
@@ -103,13 +104,11 @@ const GameApp = {
             let t = this.state.tubes[clickedTube];
             let isSealed = false;
             if (t.blocks.length > 0 && t.blocks.length === t.capacity) {
-                const tubeColor = t.blocks[0].color;
+               const tubeColor = t.blocks[0].color;
                 const allSame = t.blocks.every(b => b.color === tubeColor && !b.hidden);
                 
-                const colorTotalInGame = this.state.tubes.reduce((acc, curr) => 
-                    acc + curr.blocks.filter(b => b.color === tubeColor).length, 0);
-                
-                if (allSame && colorTotalInGame === t.capacity) {
+                // Mühürlenmesi için sadece şişenin tam dolu olması ve hepsinin aynı renk olması yeterlidir
+                if (allSame && t.blocks.length === t.capacity) {
                     isSealed = true;
                 }
             }
@@ -152,7 +151,12 @@ const GameApp = {
 
     // YENİ: Yapay Zekanın hamle sonucunu kafasında canlandırması
     simulateState: function(fromIdx, toIdx) {
-        let clone = JSON.parse(JSON.stringify(this.state.tubes));
+        // PERFORMANS: JSON.parse(JSON.stringify) CPU düşmanıdır. Sadece gerekli veriyi hızlıca kopyalıyoruz.
+        let clone = this.state.tubes.map(t => ({
+            capacity: t.capacity,
+            blocks: t.blocks.map(b => ({ color: b.color, hidden: b.hidden }))
+        }));
+        
         let source = clone[fromIdx];
         let target = clone[toIdx];
         
@@ -275,21 +279,22 @@ const GameApp = {
 
     checkWinCondition: function() {
         let isWon = true;
-        let colorMap = {};
-        this.state.tubes.forEach(t => {
-            t.blocks.forEach(b => {
-                if (b.hidden) isWon = false; 
-                colorMap[b.color] = (colorMap[b.color] || 0) + 1;
-            });
-        });
 
         for (let tube of this.state.tubes) {
+            // Şişe tamamen boşsa sorun yok, kontrol etmeye gerek yok
             if (tube.blocks.length === 0) continue; 
             
+            // Eğer şişe tam dolu DEĞİLSE, oyun henüz bitmemiştir
+            if (tube.blocks.length !== tube.capacity) {
+                isWon = false;
+                break;
+            }
+
+            // Şişe tam doluysa: Hepsi aynı renk mi ve gizli (soru işaretli) blok yok mu?
             const tubeColor = tube.blocks[0].color;
-            const isUniform = tube.blocks.every(b => b.color === tubeColor);
+            const isUniform = tube.blocks.every(b => b.color === tubeColor && !b.hidden);
             
-            if (!isUniform || tube.blocks.length !== colorMap[tubeColor]) {
+            if (!isUniform) {
                 isWon = false;
                 break;
             }
@@ -400,15 +405,16 @@ const GameApp = {
    // GÜNCELLENDİ: Sonsuz Döngü Korumalı Öğretici Sihir
    // GÜNCELLENDİ: Sadece 1 Şişe Kapatana Kadar Çalışır ve Daha Ucuzdur!
     executeAutoSolveSpell: async function() {
-        if (this.state.isAnimating || this.state.winPhase > 0) return;
+        if (this.state.isAnimating || this.state.winPhase > 0 || this.state.isAutoSolving) return;
 
-        // MALİYET DÜŞÜRÜLDÜ: İlk kullanım 30, sonra 60, 90...
         let solveCost = 30 + (30 * this.state.autoSolveUsesInLevel);
         
         if (this.state.points < solveCost) {
             alert(`Yapay Zeka yardımı için ${solveCost} puana ihtiyacın var!`);
             return;
         }
+
+        this.state.isAutoSolving = true; // YENİ: Yapay Zeka kilidini kapat (Oyuncu müdahale edemez)
 
         this.state.points -= solveCost;
         this.state.autoSolveUsesInLevel++;
@@ -450,13 +456,15 @@ const GameApp = {
                 }
             });
 
-            // Eğer şu anki kapalı şişe sayısı, büyü başladığındaki sayıdan büyükse, hedef tamamlandı!
+           // Eğer şu anki kapalı şişe sayısı, büyü başladığındaki sayıdan büyükse, hedef tamamlandı!
             if (currentSealedCount > initialSealedCount) {
                 break; // Döngüyü kır, büyücüye kontrolü geri ver.
             }
 
             await new Promise(r => setTimeout(r, 400));
         }
+        
+        this.state.isAutoSolving = false; // YENİ: Yapay Zeka işini bitirdi, kilidi aç!
     },
     setupEvents: function() {
         const handleAuth = async (isLogin) => {
