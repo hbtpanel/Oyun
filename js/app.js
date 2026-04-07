@@ -583,45 +583,51 @@ const GameApp = {
         this.state.isAutoSolving = false; // YENİ: Yapay Zeka işini bitirdi, kilidi aç!
     },
     setupEvents: function() {
-        const handleAuth = async (isLogin) => {
-            const user = document.getElementById('username-input').value.trim();
-            const pass = document.getElementById('password-input').value.trim();
-            const msgEl = document.getElementById('auth-message');
-            
-            
-            msgEl.style.color = "#f1c40f"; 
-            msgEl.innerText = "Büyü Kitaplarına Bakılıyor...";
-            
-            const result = await (isLogin ? ApiService.login(user, pass) : ApiService.register(user, pass));
-            
-            if (result.success) {
-                document.getElementById('login-overlay').style.display = 'none';
-                document.getElementById('start-overlay').style.display = 'flex'; 
-                
-            } else {
-                msgEl.style.color = "#e74c3c"; 
-                msgEl.innerText = result.message;
-            }
+    // Giriş/Kayıt işlemlerini yöneten iç fonksiyon
+    const handleAuth = async (isLogin) => {
+        const user = document.getElementById('username-input').value.trim();
+        const pass = document.getElementById('password-input').value.trim();
+        const msgEl = document.getElementById('auth-message');
+        
+        msgEl.style.color = "#f1c40f"; 
+        msgEl.innerText = "Büyü Kitaplarına Bakılıyor...";
+        
+        const result = await (isLogin ? ApiService.login(user, pass) : ApiService.register(user, pass));
+        
+        if (result.success) {
+            document.getElementById('login-overlay').style.display = 'none';
+            document.getElementById('start-overlay').style.display = 'flex'; 
+        } else {
+            msgEl.style.color = "#e74c3c"; 
+            msgEl.innerText = result.message;
+        }
+        // BURADAKİ Geri Al ve Kapat dinleyicilerini buradan sildik!
+    };
 
-            // YENİ: Geri Al Butonu
-        document.getElementById('btn-undo').addEventListener('click', () => {
+    // --- DOĞRU YER: Tüm buton dinleyicileri burada olmalı ---
+
+    // Geri Al Butonu (Artık her zaman aktif)
+    const btnUndo = document.getElementById('btn-undo');
+    if (btnUndo) {
+        btnUndo.addEventListener('click', () => {
             this.undoMove();
         });
+    }
 
-        // YENİ: Tıkanma/Yenilgi ekranını kapatıp tabloya dönme butonu
-        const btnCloseDefeat = document.getElementById('btn-close-defeat');
-        if(btnCloseDefeat) {
-            btnCloseDefeat.addEventListener('click', () => {
-                document.getElementById('defeat-modal').classList.add('hidden');
-            });
-        }
-        };
+    // Yenilgi ekranını kapatma butonu
+    const btnCloseDefeat = document.getElementById('btn-close-defeat');
+    if (btnCloseDefeat) {
+        btnCloseDefeat.addEventListener('click', () => {
+            document.getElementById('defeat-modal').classList.add('hidden');
+        });
+    }
 
-        const btnLogin = document.getElementById('btn-login');
-        if(btnLogin) btnLogin.addEventListener('click', () => handleAuth(true));
-        
-        const btnRegister = document.getElementById('btn-register');
-        if(btnRegister) btnRegister.addEventListener('click', () => handleAuth(false));
+    // Giriş ve Kayıt Butonları
+    const btnLogin = document.getElementById('btn-login');
+    if(btnLogin) btnLogin.addEventListener('click', () => handleAuth(true));
+    
+    const btnRegister = document.getElementById('btn-register');
+    if(btnRegister) btnRegister.addEventListener('click', () => handleAuth(false));
         
         const btnLogout = document.getElementById('btn-logout');
         if(btnLogout) {
