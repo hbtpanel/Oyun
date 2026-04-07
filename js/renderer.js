@@ -33,8 +33,22 @@ const Renderer = {
         return start * (1 - t) + end * t;
     },
 
-    draw: function(gameState, time) {
+   draw: function(gameState, time) {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // --- YENİ: SOLUK VE KOYU ARKA PLAN ---
+        this.ctx.fillStyle = "#0f1923"; 
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        let vignette = this.ctx.createRadialGradient(
+            this.canvas.width/2, this.canvas.height/2, this.canvas.width*0.2,
+            this.canvas.width/2, this.canvas.height/2, this.canvas.width*0.8
+        );
+        vignette.addColorStop(0, "rgba(0, 0, 0, 0)"); 
+        vignette.addColorStop(1, "rgba(0, 0, 0, 0.6)"); 
+        this.ctx.fillStyle = vignette;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        // -------------------------------------
 
         const tubes = gameState.tubes;
         this.tubeCoords = []; 
@@ -170,8 +184,11 @@ const Renderer = {
             }
         }
         
-        this.drawParticles(time);
-        if (gameState.winPhase === 1) this.drawConfetti(time); 
+       this.drawParticles(time);
+        if (gameState.winPhase === 1) {
+            this.drawConfetti(time); 
+            this.drawWinMessage(time); // YENİ: Tam ortaya mesaj ve çember çizer
+        }
     },
 
     drawTube: function(x, y, tubeData, actualTubeHeight, angle, time, gameState, tubeIndex, isFlying) {
@@ -265,13 +282,31 @@ const Renderer = {
         
         this.ctx.restore(); // Clipping bitti
         
-        // Şişe Camını ve Yansımayı Çiz
+        // Şişe Camını Çiz (Kenarlıklar)
         this.ctx.shadowBlur = 0;
         this.ctx.stroke(); 
+
+        // --- YENİ: GERÇEKÇİ CAM YANSIMASI (3D ETKİ) ---
+        // 1. Sol Parlama (Işığın Vurduğu İnce Çizgi)
+        let glassShine = this.ctx.createLinearGradient(x, y, x + this.tubeWidth/2, y);
+        glassShine.addColorStop(0, "rgba(255, 255, 255, 0.6)"); // Kenar çok parlak
+        glassShine.addColorStop(0.3, "rgba(255, 255, 255, 0.1)");
+        glassShine.addColorStop(1, "rgba(255, 255, 255, 0)");
         
-        this.ctx.fillStyle = "rgba(255, 255, 255, 0.15)";
+        this.ctx.fillStyle = glassShine;
         this.ctx.beginPath();
-        this.ctx.rect(x + 6, y + 15, this.tubeWidth * 0.15, actualTubeHeight - 30);
+        // Şişenin iç kavislerine uyumlu yansıma
+        this.ctx.rect(x + 2, y + 2, this.tubeWidth * 0.35, actualTubeHeight - 5);
+        this.ctx.fill();
+        
+        // 2. Sağ Koyu Gölge (Camın Kalınlığını ve Hacmini Verir)
+        let glassShadow = this.ctx.createLinearGradient(x + this.tubeWidth*0.7, y, x + this.tubeWidth, y);
+        glassShadow.addColorStop(0, "rgba(0, 0, 0, 0)");
+        glassShadow.addColorStop(1, "rgba(0, 0, 0, 0.4)");
+        
+        this.ctx.fillStyle = glassShadow;
+        this.ctx.beginPath();
+        this.ctx.rect(x + this.tubeWidth * 0.65, y + 2, this.tubeWidth * 0.33, actualTubeHeight - 5);
         this.ctx.fill();
 
         // --- YENİ KRİSTAL TIPA VE ANİMASYONU ---
@@ -373,25 +408,28 @@ const Renderer = {
         this.ctx.lineTo(x, y + height + 2);
         this.ctx.closePath();
         
-       let gradient = this.ctx.createRadialGradient(x + width/2, y + height/2, height/4, x + width/2, y + height/2, width/2);
-        gradient.addColorStop(0, this.hexToRgba(color, 1));
-        gradient.addColorStop(1, this.hexToRgba(color, 0.8)); 
+        // --- YENİ: 3 BOYUTLU SİLİNDİR SIVI EFEKTİ ---
+        let gradient = this.ctx.createLinearGradient(x, y, x + width, y);
+        gradient.addColorStop(0, this.hexToRgba(color, 0.3));   // Sol gölge (Koyu)
+        gradient.addColorStop(0.2, this.hexToRgba(color, 1.0)); // Sol parlama (Işık vuruyor)
+        gradient.addColorStop(0.7, this.hexToRgba(color, 0.85));// Orta ana renk
+        gradient.addColorStop(1, this.hexToRgba(color, 0.2));   // Sağ gölge (Hacim verir)
+        
         this.ctx.fillStyle = gradient;
         this.ctx.fill();
 
-        // YENİ: Sıvı Katmanlarını Ayıran Çizgi (Renklerin daha net seçilmesi için)
-        this.ctx.strokeStyle = "rgba(0, 0, 0, 0.15)";
-        this.ctx.lineWidth = 2;
+        // Sıvı Katmanlarını Ayıran Çizgi (Koyulaştırıldı)
+        this.ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+        this.ctx.lineWidth = 1.5;
         this.ctx.beginPath();
         this.ctx.moveTo(x, y);
         this.ctx.lineTo(x + width, y);
         this.ctx.stroke();
 
-        // YENİ: Yukarı Çıkan Büyülü Baloncuklar
-        this.ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
+        // Büyülü Baloncuklar
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
         let bubbleCount = Math.floor(width / 15);
         for (let b = 0; b < bubbleCount; b++) {
-            // Zamana ve indekslere bağlı olarak baloncukların yukarı süzülmesi
             let bY = y + height - ((time * 0.05 + b * 20 + index * 50) % height);
             let bX = x + 5 + ((time * 0.01 + b * 10) % (width - 10));
             this.ctx.beginPath();
@@ -400,18 +438,16 @@ const Renderer = {
         }
     },
 
-    // --- YENİ: GERÇEKÇİ KISA AKIŞ (Hortum Görüntüsü İptal) ---
+   // --- YENİ: DAMLACIKLI, YOĞUN SÜT GİBİ AKIŞ EFEKTİ ---
     drawPouringAnimation: function(data, gameState, time) {
         const toCoord = this.tubeCoords[data.to];
         
-        // Aktif (uçan) şişenin tam o anki dudak (lip) koordinatlarını hesapla
         let activeX = this.activePourState.x;
         let activeY = this.activePourState.y;
         let angle = this.activePourState.angle;
         
         let isMovingLeft = (data.to < data.from);
 
-        // Eğik şişenin alt dudağı nereden dökülür?
         let pourX = activeX + this.tubeWidth / 2;
         let pourY = activeY;
 
@@ -423,55 +459,76 @@ const Renderer = {
              pourY -= (this.tubeWidth/2) * Math.sin(Math.abs(angle));
         }
         
-        // Hedef şişenin ağzı
         const targetX = toCoord.x + toCoord.width / 2;
         const targetY = toCoord.y;
 
-        // Artık şişe hedefin tam üzerinde olduğu için bu çizgi kısacık ve gerçekçi olacak!
         this.ctx.beginPath();
-        this.ctx.strokeStyle = data.color;
-        this.ctx.lineWidth = Math.max(5, this.tubeWidth / 7); 
+        let fluidColor = this.hexToRgba(data.color, 0.9);
+        let highlightColor = this.hexToRgba("#ffffff", 0.5); 
+
+        let streamGradient = this.ctx.createLinearGradient(pourX, pourY, targetX, targetY);
+        streamGradient.addColorStop(0, fluidColor);
+        streamGradient.addColorStop(0.2, highlightColor); 
+        streamGradient.addColorStop(0.5, fluidColor);
+        streamGradient.addColorStop(0.8, highlightColor); 
+        streamGradient.addColorStop(1, fluidColor);
+
+        this.ctx.lineWidth = Math.max(8, this.tubeWidth / 5); 
+        this.ctx.strokeStyle = streamGradient;
         this.ctx.lineCap = 'round';
         this.ctx.moveTo(pourX, pourY);
-        // Kontrol noktasını düşürerek suyun dik düşmesini sağladık
-        this.ctx.quadraticCurveTo((pourX + targetX) / 2, pourY, targetX, targetY);
+        this.ctx.quadraticCurveTo((pourX + targetX) / 2, pourY + 10, targetX, targetY); 
         this.ctx.stroke();
         
         this.ctx.lineWidth = Math.max(2, this.tubeWidth / 20); 
-        this.ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        this.ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
         this.ctx.stroke();
 
-        if (time % 8 < 3) { 
+        // Havada Süzülen Damlacıklar
+        if (time % 3 < 1) { 
             this.particles.push({
-                x: pourX, y: pourY, targetX: targetX, targetY: targetY, color: data.color, life: 1
+                x: pourX + (Math.random() - 0.5) * 5, 
+                y: pourY, 
+                targetX: targetX + (Math.random() - 0.5) * 10, 
+                targetY: targetY, 
+                color: data.color, 
+                life: 1,
+                size: Math.random() * 3 + 1, 
+                vx: (Math.random() - 0.5) * 2, 
+                vy: Math.random() * 2 
             });
         }
 
-        // Hedefe Çarpma Sıçraması (Splash Effect)
-        if (time % 4 < 2) {
+        // Hedefe Çarpma Sıçraması
+        if (time % 2 < 1) { 
             this.splashParticles.push({
-                x: targetX + (Math.random() - 0.5) * 15, 
+                x: targetX + (Math.random() - 0.5) * 20, 
                 y: targetY + 5, 
-                vx: (Math.random() - 0.5) * 6, 
-                vy: -Math.random() * 8 - 2,    
+                vx: (Math.random() - 0.5) * 10, 
+                vy: -Math.random() * 12 - 4,    
                 color: data.color,
-                life: 1
+                life: 1,
+                size: Math.random() * 4 + 1 
             });
         }
     },
 
-    drawParticles: function(time) {
+   drawParticles: function(time) {
         for (let i = this.particles.length - 1; i >= 0; i--) {
             let p = this.particles[i];
             p.life -= 0.05; 
             let t = 1 - p.life;
-            let controlY = p.y; // Dik düşüş için kontrol noktası düzenlendi
+            let controlY = p.y; 
             p.currentX = (1-t)**2 * p.x + 2*t*(1-t) * ((p.x+p.targetX)/2) + t**2 * p.targetX;
             p.currentY = (1-t)**2 * p.y + 2*t*(1-t) * controlY + t**2 * p.targetY;
 
+            if (p.vx) p.currentX += p.vx * (1 - p.life); 
+            if (p.vy) p.currentY += p.vy * (1 - p.life); 
+            p.vy += 0.1; 
+
             if (p.life > 0) {
                 this.ctx.beginPath();
-                this.ctx.arc(p.currentX, p.currentY, 2, 0, Math.PI * 2);
+                this.ctx.arc(p.currentX, p.currentY, p.size || 2, 0, Math.PI * 2);
                 this.ctx.fillStyle = this.hexToRgba(p.color, p.life);
                 this.ctx.fill();
             } else { this.particles.splice(i, 1); }
@@ -525,5 +582,67 @@ const Renderer = {
         if (!hex) return "rgba(255,255,255,1)";
         var r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
         return "rgba(" + r + ", " + g + ", " + b + ", " + alpha + ")";
+    }, // <--- İŞTE BU VİRGÜL ÇOK ÖNEMLİ. BUNU EKLİYORUZ.
+
+    // --- YENİ: MERKEZİ RİTÜEL ÇEMBERİ VE BÜYÜ TAMAMLANDI MESAJI ---
+    drawWinMessage: function(time) {
+        // Ekranın tam geometrik merkezi
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        
+        // Mobilde ekran boyutuna göre ölçeklenen boyutlar
+        const circleRadius = Math.min(150, this.canvas.width * 0.35); 
+        const fontSize = Math.min(45, this.canvas.width * 0.08);
+
+        this.ctx.save();
+
+        // 1. Dönen Ritüel Çemberi (Arka Plan)
+        this.ctx.translate(centerX, centerY);
+        this.ctx.save();
+        this.ctx.rotate(time * 0.001); // Yavaşça döner
+        
+        // Dış Rün Çemberi (Kesik çizgili)
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, circleRadius, 0, Math.PI * 2);
+        this.ctx.strokeStyle = "rgba(241, 196, 15, 0.4)"; // Parlak sarı
+        this.ctx.lineWidth = 6;
+        this.ctx.setLineDash([15, 15]); 
+        this.ctx.stroke();
+
+        // İç Büyü Çemberi (Ters yöne döner)
+        this.ctx.rotate(-time * 0.002);
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, circleRadius * 0.8, 0, Math.PI * 2);
+        this.ctx.strokeStyle = "rgba(230, 126, 34, 0.3)"; // Turuncu
+        this.ctx.lineWidth = 3;
+        this.ctx.setLineDash([5, 10]);
+        this.ctx.stroke();
+        
+        this.ctx.restore();
+
+        // 2. "BÜYÜ TAMAMLANDI" Metni (Ön Plan)
+        const scale = 1 + Math.sin(time * 0.005) * 0.05;
+        this.ctx.scale(scale, scale);
+
+        this.ctx.shadowColor = "#f1c40f";
+        this.ctx.shadowBlur = 25;
+
+        this.ctx.font = `bold ${fontSize}px 'Courier New', sans-serif`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        
+        let textGradient = this.ctx.createLinearGradient(-100, -20, 100, 20);
+        textGradient.addColorStop(0, "#f39c12");
+        textGradient.addColorStop(0.5, "#fff");
+        textGradient.addColorStop(1, "#f39c12");
+
+        this.ctx.lineWidth = 4;
+        this.ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+        this.ctx.strokeText("BÜYÜ TAMAMLANDI", 0, 0);
+
+        this.ctx.fillStyle = textGradient;
+        this.ctx.fillText("BÜYÜ TAMAMLANDI", 0, 0);
+
+        this.ctx.restore();
     }
-};
+}; // <--- Renderer objesini kapatan en sondaki süslü parantez

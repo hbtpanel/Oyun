@@ -302,12 +302,13 @@ const GameApp = {
         }
     },
 
-    handleLevelWinSequence: function() {
+   handleLevelWinSequence: function() {
         this.state.winPhase = 1;
         this.state.winStartTime = Date.now();
         AudioManager.play('win');
         
-        document.getElementById('win-text-overlay').classList.remove('hidden');
+        // ESKİDEN BURADAYDI, İPTAL ETTİK:
+        // document.getElementById('win-text-overlay').classList.remove('hidden');
 
         setTimeout(() => {
             this.state.winPhase = 2;
@@ -325,7 +326,8 @@ const GameApp = {
                 
                 this.startNewLevel(this.state.level);
                 
-                document.getElementById('win-text-overlay').classList.add('hidden');
+                // ESKİDEN BURADAYDI, İPTAL ETTİK:
+                // document.getElementById('win-text-overlay').classList.add('hidden');
 
                 smoke.classList.remove('smoke-active'); 
                 
