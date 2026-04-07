@@ -25,17 +25,21 @@ const Renderer = {
         window.addEventListener('resize', () => { this.lastTubeCount = 0; this.resize(); });
     },
 
-    resize: function() {
+   resize: function() {
         // --- YENİ: RETİNA EKRAN (MOBİL NETLİK) OPTİMİZASYONU ---
         const dpr = window.devicePixelRatio || 1;
         
+        // YENİ: Mobilde sahte innerHeight yerine gerçek görünür alanı (clientHeight) baz alıyoruz
+        const winW = window.innerWidth;
+        const winH = document.documentElement.clientHeight || window.innerHeight;
+
         // CSS ile ekranda kaplayacağı gerçek alan
-        this.canvas.style.width = window.innerWidth + 'px';
-        this.canvas.style.height = window.innerHeight + 'px';
+        this.canvas.style.width = winW + 'px';
+        this.canvas.style.height = winH + 'px';
         
         // Canvas'ın iç çözünürlüğü (dpr ile çarpılmış)
-        this.canvas.width = window.innerWidth * dpr;
-        this.canvas.height = window.innerHeight * dpr;
+        this.canvas.width = winW * dpr;
+        this.canvas.height = winH * dpr;
         
         // Çizimleri bu yeni çözünürlüğe göre ölçekle
         this.ctx.scale(dpr, dpr);
@@ -48,9 +52,9 @@ const Renderer = {
         return start * (1 - t) + end * t;
     },
 
-  draw: function(gameState, time) {
+ draw: function(gameState, time) {
         const winW = window.innerWidth;
-        const winH = window.innerHeight;
+        const winH = document.documentElement.clientHeight || window.innerHeight; // YENİ: Gerçek yüksekliği okur
 
         this.ctx.clearRect(0, 0, winW, winH);
 
@@ -61,7 +65,7 @@ const Renderer = {
         const tubes = gameState.tubes;
         this.activePourState = null;
 
-        // --- AKILLI YERLEŞİM (MAX ALAN) VE OPTİMİZASYON ---
+       // --- AKILLI YERLEŞİM (MAX ALAN) VE OPTİMİZASYON ---
         if (this.lastTubeCount !== tubes.length) {
             this.tubeCoords = []; 
             
@@ -69,30 +73,37 @@ const Renderer = {
             const maxCapacity = Math.max(...tubes.map(t => t.capacity));
             const maxTubeHeight = maxCapacity * this.baseBlockHeight;
             
-            // Kullanılabilir alanı biraz daha genişletelim (Ekrana daha fazla yayılsınlar)
-            const availableHeight = winH * 0.68; 
-            const availableWidth = winW * 0.95;   
+            const isMobile = winW < 600;
             
-            let bestCols = 4;
+            // 1. GÜVENLİ ALANLAR (Menülerin arkasında kalmayı kesin engeller)
+            const topSafeZone = isMobile ? 85 : 80;    
+            const bottomSafeZone = isMobile ? 110 : 100; 
+            
+            const availableHeight = winH - (topSafeZone + bottomSafeZone); 
+            const availableWidth = isMobile ? (winW * 0.96) : (winW * 0.92); 
+
+            // 2. DİNAMİK BOŞLUKLAR (Şişeler büyüsün diye aralarındaki ölü alanı yok ediyoruz!)
+            const dynamicGapX = isMobile ? (N > 8 ? 8 : 20) : this.tubeGapX;
+            const dynamicGapY = isMobile ? (N > 8 ? 15 : 40) : this.tubeGapY;
+            
+            let bestCols = 3;
             let bestScale = 0;
             
-            // Ekran boyutuna göre maksimum yan yana dizilebilecek şişe sınırları
-            const maxColLimit = winW < 600 ? 6 : 10;
-            const minColLimit = Math.min(3, N); // En az 3 sütun
+            // Algoritma 4, 5 veya 6 sütun ihtimallerini dener, hangisi şişeleri daha BÜYÜK yaparsa onu seçer
+            const maxColLimit = isMobile ? 6 : 8; 
+            const minColLimit = Math.min(isMobile ? 3 : 4, N);
 
-            // Tüm dizilim ihtimallerini dene, en büyük şişe boyutunu vereni seç
             for (let c = minColLimit; c <= maxColLimit; c++) {
                 if (c > N) break;
                 
-                let r = Math.ceil(N / c); // Bu sütun sayısına göre satır sayısı
-                let gridW = c * this.baseTubeWidth + (c - 1) * this.tubeGapX;
-                let gridH = r * maxTubeHeight + (r - 1) * this.tubeGapY;
+                let r = Math.ceil(N / c); 
+                let gridW = c * this.baseTubeWidth + (c - 1) * dynamicGapX;
+                let gridH = r * maxTubeHeight + (r - 1) * dynamicGapY;
                 
                 let scaleW = availableWidth / gridW;
                 let scaleH = availableHeight / gridH;
                 let currentScale = Math.min(scaleW, scaleH);
                 
-                // Eğer bu dizilim şişeleri daha büyük yapıyorsa, bu dizilimi seç!
                 if (currentScale > bestScale) {
                     bestScale = currentScale;
                     bestCols = c;
@@ -101,18 +112,21 @@ const Renderer = {
 
             this.maxTubesPerRow = bestCols;
             const totalRows = Math.ceil(N / this.maxTubesPerRow);
-            const totalGapY = (totalRows - 1) * this.tubeGapY;
+            const totalGapY = (totalRows - 1) * dynamicGapY;
             
-            // Şişelerin ekranı yırtacak kadar devasa olmasını engelle (Maks 1.15 katı)
-            const scale = Math.min(1.15, bestScale);
+            // 3. BÜYÜME SINIRINI ÖZGÜR BIRAK (Eski koddaki 1.15 kısıtlaması kaldırıldı)
+            const scale = isMobile ? Math.min(1.85, bestScale) : Math.min(1.3, bestScale);
 
             this.tubeWidth = this.baseTubeWidth * scale;
             this.blockHeight = this.baseBlockHeight * scale;
-            this.currentTubeGapX = this.tubeGapX * scale;
-            this.currentTubeGapY = this.tubeGapY * scale;
+            this.currentTubeGapX = dynamicGapX * scale;
+            this.currentTubeGapY = dynamicGapY * scale;
 
             const actualTotalGridHeight = totalRows * (maxTubeHeight * scale) + (totalGapY * scale);
-            const gridStartY = (winH - actualTotalGridHeight) / 2.2;
+            
+            // 4. KUSURSUZ ORTALAMA (Dikeyde kalan boşluğu bulup tam ortaya hizalar)
+            const extraSpaceY = Math.max(0, availableHeight - actualTotalGridHeight);
+            const gridStartY = topSafeZone + (extraSpaceY / 2);
 
             for (let i = 0; i < tubes.length; i++) {
                 const currentRow = Math.floor(i / this.maxTubesPerRow);
@@ -126,6 +140,8 @@ const Renderer = {
                 const rowStartX = (winW - rowWidth) / 2;
                 let actualTubeHeight = tubes[i].capacity * this.blockHeight;
                 let x = rowStartX + currentCol * (this.tubeWidth + this.currentTubeGapX);
+                
+                // Şişeler artık gridStartY'yi baz alarak tam ortaya yerleşiyor
                 let y = gridStartY + currentRow * ((maxTubeHeight * scale) + this.currentTubeGapY) + ((maxTubeHeight * scale) - actualTubeHeight);
                 
                 this.tubeCoords[i] = { x, y, width: this.tubeWidth, height: actualTubeHeight };

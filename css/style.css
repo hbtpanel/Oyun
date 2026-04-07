@@ -1,4 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap');
+
+/* --- 1. SIFIRLAMA VE GENEL AYARLAR --- */
 * {
     margin: 0;
     padding: 0;
@@ -9,24 +11,22 @@
 }
 
 body, html {
+    margin: 0;
+    padding: 0;
     width: 100vw;
-    height: 100vh;
+    height: 100dvh; /* Mobilde adres çubuğu payını otomatik hesaplayan güvenli kod */
     overflow: hidden;
     font-family: 'MedievalSharp', 'Arial', sans-serif;
+    background-color: #1a1a2e;
     
-    /* YENİ: Büyülü Görseli Arka Plan Yap */
-    background-image: url('../arkaplan.jpg'); /* Eğer resmi css klasörüne koyarsan url('arkaplan.jpg') yapabilirsin */
+    /* Arka plan ayarları */
+    background-image: url('../arkaplan.jpg'); 
     background-size: cover;
     background-position: center bottom;
     background-repeat: no-repeat;
-
-    /* --- YENİ: MOBİL KORUMALAR --- */
-    touch-action: none; /* Ekranı kaydırmayı ve yenilemeyi (pull-to-refresh) tamamen engeller */
-    user-select: none; /* Metinlerin yanlışlıkla seçilip mavi olmasını engeller */
-    -webkit-user-select: none; /* Safari (iPhone) koruması */
 }
 
-/* YENİ: Şişelerin net görünmesi için arka plan görselinin üzerine sihirli bir karartma (Vignette) filtresi */
+/* Şişelerin net görünmesi için arka plan görselinin üzerine sihirli bir karartma (Vignette) filtresi */
 body::before {
     content: "";
     position: absolute;
@@ -36,6 +36,9 @@ body::before {
     pointer-events: none;
 }
 
+.hidden { display: none !important; }
+
+/* --- 2. OYUN ALANI VE ARAYÜZ (UI) KATMANI --- */
 #gameCanvas {
     position: absolute;
     top: 0;
@@ -52,38 +55,72 @@ body::before {
     width: 100%;
     height: 100%;
     z-index: 10;
-    pointer-events: none;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 30px;
+    pointer-events: none; /* Canvas'a tıklamayı engellememesi için çok önemlidir */
 }
 
-.top-bar, .bottom-bar {
-    display: flex;
-    justify-content: space-between;
-    color: #e8dcc4; /* Parşömen sarısı/beyazı */
-    font-size: 20px;
-    font-weight: bold;
+/* Üst Menü (Seviye ve Puan) - Modern ve Çentik Korumalı */
+.top-bar {
+    position: absolute;
+    top: env(safe-area-inset-top, 20px);
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 15px 25px;
+    
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center;
+    
     pointer-events: auto;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+    z-index: 50;
+
+    color: #e8dcc4;
+    font-size: clamp(18px, 5vw, 24px);
+    font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 1), 0 0 10px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0,0,0,0.5);
 }
 
+/* Alt Menü (Butonlar) - Modern ve Ortalı */
+/* Alt Menü (Butonlar) - Modern ve Ortalı */
+.bottom-bar {
+    position: absolute;
+    bottom: env(safe-area-inset-bottom, 20px);
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 15px;
+    
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: center !important; 
+    gap: 8px; /* Butonlar arası boşluğu biraz azalttık */
+    flex-wrap: nowrap !important; /* YENİ: Asla alt satıra geçme, zorla tek satırda tut! */
+    align-items: center;
+    
+    pointer-events: auto;
+    z-index: 50;
+}
+
+/* --- 3. BUTON TASARIMLARI --- */
 button {
-    padding: 12px 24px;
-    background: linear-gradient(145deg, #3e2723, #1b100b); /* Koyu ahşap geçişi */
-    border: 2px solid #8d6e63; /* Eskimiş bronz kenarlık */
-    color: #e8dcc4; /* Antika metin rengi */
+    padding: 12px 20px; /* Sağdan soldan biraz incelttik */
+    background: linear-gradient(145deg, #3e2723, #1b100b);
+    border: 2px solid #8d6e63;
+    color: #e8dcc4;
     border-radius: 8px;
-    font-size: 16px;
+    font-size: clamp(13px, 3.5vw, 15px); /* Yazıyı milimetrik küçülttük */
     font-weight: bold;
+    font-family: inherit;
+    white-space: nowrap; /* YENİ: Butonun içindeki yazı asla alt satıra düşmez */
     box-shadow: inset 0 0 10px rgba(0,0,0,0.6), 0 4px 8px rgba(0,0,0,0.5);
     transition: all 0.15s ease;
     cursor: pointer;
+    pointer-events: auto;
 }
 
 button:active {
-    transform: translateY(2px) scale(0.97); /* Basılma hissi (aşağı inme) */
+    transform: translateY(2px) scale(0.97);
     box-shadow: inset 0 0 15px rgba(0,0,0,0.8), 0 1px 2px rgba(0,0,0,0.5);
     background: linear-gradient(145deg, #1b100b, #3e2723);
 }
@@ -102,22 +139,70 @@ button:active {
     100% { transform: scale(1); box-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
 }
 
-#magic-ritual-screen {
+/* --- 4. GİRİŞ VE BAŞLANGIÇ EKRANLARI (Senin Eski Kodların) --- */
+#login-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.95);
-    z-index: 100;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: radial-gradient(circle at 50% 40%, #2a344a 0%, #111625 80%, #07090f 100%);
+    z-index: 300;
+    display: flex; align-items: center; justify-content: center;
     pointer-events: auto;
 }
 
-.hidden { display: none !important; }
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.auth-form input {
+    padding: 15px;
+    border-radius: 10px;
+    border: 2px solid #2c3e50;
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+    font-size: 16px;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.3s;
+    text-align: center;
+}
+
+.auth-form input:focus {
+    border-color: #f1c40f;
+    box-shadow: 0 0 15px rgba(241, 196, 15, 0.3);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+#start-overlay {
+    position: absolute;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: #1a1a2e;
+    z-index: 200;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: auto;
+}
+
+#btn-start {
+    font-size: 26px;
+    padding: 18px 45px;
+    background-color: #2ecc71;
+    color: white;
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.5);
+    margin-top: 50px;
+}
+
+#magic-ritual-screen {
+    position: absolute;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 100;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    pointer-events: auto;
+}
 
 .glow-text {
     color: #f1c40f;
@@ -133,32 +218,7 @@ button:active {
     opacity: 0.8;
 }
 
-#start-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: #1a1a2e;
-    z-index: 200;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-}
-
-#btn-start {
-    font-size: 26px;
-    padding: 18px 45px;
-    background-color: #2ecc71;
-    color: white;
-    border: none;
-    border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(46, 204, 113, 0.5);
-    margin-top: 50px;
-}
-
-/* YENİ: Yenilgi Ekranı Stilleri */
+/* --- 5. YENİLGİ, ZAFER VE DUMAN EFEKTLERİ --- */
 #defeat-modal {
     position: absolute;
     top: 0; left: 0; width: 100vw; height: 100vh;
@@ -191,13 +251,12 @@ button:active {
     width: 100%;
 }
 
-/* --- YENİ: ZAFER YAZISI ANİMASYONU --- */
 #win-text-overlay {
     position: absolute;
     top: 0; left: 0; width: 100vw; height: 100vh;
     z-index: 120;
     display: flex; align-items: center; justify-content: center;
-    pointer-events: none; /* Tıklamaları engellemesin */
+    pointer-events: none;
 }
 
 .victory-text {
@@ -214,7 +273,6 @@ button:active {
     100% { transform: scale(1); opacity: 1; }
 }
 
-/* --- YENİ: SİHİRLİ DUMAN GEÇİŞİ --- */
 #magic-smoke-transition {
     position: absolute;
     bottom: 0; left: 0; width: 100vw; height: 100vh;
@@ -226,86 +284,46 @@ button:active {
     transition: transform 0.8s ease-in, opacity 0.8s ease-in;
 }
 
-/* JavaScript ile bu class eklenince duman ekranı kaplayacak */
 .smoke-active {
     opacity: 1 !important;
     transform: translateY(0) !important;
 }
-/* --- YENİ: ÜYELİK FORMU STİLLERİ --- */
-#login-overlay {
-    position: absolute;
-    top: 0; left: 0; width: 100vw; height: 100vh;
-    background: radial-gradient(circle at 50% 40%, #2a344a 0%, #111625 80%, #07090f 100%);
-    z-index: 300;
-    display: flex; align-items: center; justify-content: center;
+
+/* Liderlik Tablosu vb. için Modal Overlay (Yeni Eklenmişti) */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(5px);
+    z-index: 250;
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    pointer-events: auto;
 }
 
-.auth-form {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-    margin-top: 20px;
-}
-
-.auth-form input {
-    padding: 15px;
-    border-radius: 10px;
-    border: 2px solid #2c3e50;
-    background: rgba(255, 255, 255, 0.05);
-    color: white;
-    font-size: 16px;
-    font-family: inherit;
-    outline: none;
-    transition: all 0.3s;
-    text-align: center;
-}
-
-.auth-form input:focus {
-    border-color: #f1c40f;
-    box-shadow: 0 0 15px rgba(241, 196, 15, 0.3);
-    background: rgba(255, 255, 255, 0.1);
-}
-
-/* --- YENİ: MOBİL UYUM (RESPONSIVE) --- */
+/* --- 6. MOBİL UYUM (RESPONSIVE) --- */
 @media screen and (max-width: 600px) {
-    #ui-layer {
-        padding: 15px; /* Mobilde boşlukları daralt */
-    }
-
+    #ui-layer { padding: 15px; }
+    .glow-text { font-size: 26px; }
+    #btn-start { font-size: 20px; padding: 15px 30px; }
+    
     .top-bar {
-        font-size: 16px;
+        padding: 10px 15px;
     }
-
-    /* Mobilde alt butonları yan yana sıkıştırma, taşarlarsa alt alta insinler */
+    
+    /* YENİ: Mobilde butonları tek satıra mükemmel sığdırmak için */
     .bottom-bar {
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 8px;
+        gap: 5px; /* Boşlukları minimuma indir */
+        padding: 10px 5px;
     }
-
-    .bottom-bar button {
-        padding: 8px 12px;
-        font-size: 13px;
-        flex: 1 1 auto; /* Ekrana sığacak şekilde uzayıp kısalsınlar */
-        min-width: 30%;
-    }
-
-    .glow-text {
-        font-size: 26px; /* Büyücü başlıklarını mobilde küçült */
-    }
-
-    #btn-start {
-        font-size: 20px;
-        padding: 15px 30px;
+    
+    button {
+        padding: 8px 10px; /* Butonları küçült */
+        font-size: clamp(11px, 3vw, 13px); /* Yazıları daralt */
     }
 }
 
-/* Küçük ekran yüksekliği olan telefonlar (Yatay Mod veya iPhone SE vb.) için */
 @media screen and (max-height: 700px) {
-    #ui-layer {
-        padding: 10px;
-    }
-    .top-bar {
-        font-size: 14px;
-    }
+    #ui-layer { padding: 10px; }
+    .top-bar { padding: 5px 15px; }
+    .bottom-bar { padding: 5px 10px; }
 }

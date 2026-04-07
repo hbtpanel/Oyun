@@ -102,13 +102,17 @@ const GameApp = {
 
         if (clickedTube !== -1) {
             let t = this.state.tubes[clickedTube];
-            let isSealed = false;
+           let isSealed = false;
             if (t.blocks.length > 0 && t.blocks.length === t.capacity) {
-               const tubeColor = t.blocks[0].color;
+                const tubeColor = t.blocks[0].color;
                 const allSame = t.blocks.every(b => b.color === tubeColor && !b.hidden);
                 
-                // Mühürlenmesi için sadece şişenin tam dolu olması ve hepsinin aynı renk olması yeterlidir
-                if (allSame && t.blocks.length === t.capacity) {
+                // YENİ: Oyundaki o renge ait toplam blok sayısını bul
+                const colorTotalInGame = this.state.tubes.reduce((acc, curr) => 
+                    acc + curr.blocks.filter(b => b.color === tubeColor).length, 0);
+                
+                // Mühürlenmesi için: Şişe tam dolu olmalı VE oyundaki o rengin TÜM bloklarını barındırmalı
+                if (allSame && t.blocks.length === t.capacity && t.blocks.length === colorTotalInGame) {
                     isSealed = true;
                 }
             }
@@ -425,11 +429,16 @@ const GameApp = {
         let visitedStates = new Set();
         let stuckCounter = 0; 
 
-        // YENİ: Büyüye başlamadan önce ekrandaki kapalı (tamamlanmış) şişeleri say
+       // YENİ: Büyüye başlamadan önce ekrandaki kapalı (tamamlanmış) şişeleri say
         let initialSealedCount = 0;
         this.state.tubes.forEach(t => {
             if(t.blocks.length > 0 && t.blocks.length === t.capacity && t.blocks.every(b => b.color === t.blocks[0].color && !b.hidden)) {
-                initialSealedCount++;
+                const tubeColor = t.blocks[0].color;
+                const colorTotalInGame = this.state.tubes.reduce((acc, curr) => acc + curr.blocks.filter(b => b.color === tubeColor).length, 0);
+                // Sadece rengin tüm bloklarını içeren şişeleri "tamamlanmış" say
+                if (t.blocks.length === colorTotalInGame) {
+                    initialSealedCount++;
+                }
             }
         });
 
@@ -448,11 +457,15 @@ const GameApp = {
             await this.executePour(nextMove.from, nextMove.to);
             stuckCounter++;
 
-            // YENİ HAMLE SONRASI KONTROL: Yeni bir şişe kapandı mı?
+          // YENİ HAMLE SONRASI KONTROL: Yeni bir şişe kapandı mı?
             let currentSealedCount = 0;
             this.state.tubes.forEach(t => {
                 if(t.blocks.length > 0 && t.blocks.length === t.capacity && t.blocks.every(b => b.color === t.blocks[0].color && !b.hidden)) {
-                    currentSealedCount++;
+                    const tubeColor = t.blocks[0].color;
+                    const colorTotalInGame = this.state.tubes.reduce((acc, curr) => acc + curr.blocks.filter(b => b.color === tubeColor).length, 0);
+                    if (t.blocks.length === colorTotalInGame) {
+                        currentSealedCount++;
+                    }
                 }
             });
 
@@ -551,7 +564,7 @@ const GameApp = {
         document.getElementById('btn-leaderboard').addEventListener('click', async () => {
             const modal = document.getElementById('leaderboard-modal');
             const listDiv = document.getElementById('leaderboard-list');
-            modal.classList.remove('hidden');
+            modal.style.display = 'flex'; // YENİ: Doğrudan stili değiştirerek açar
             listDiv.innerHTML = '<p style="text-align:center; color:#bdc3c7;">Parşömenler Okunuyor...</p>';
             
             try {
@@ -579,10 +592,10 @@ const GameApp = {
             }
         });
 
-        const btnCloseLeaderboard = document.getElementById('btn-close-leaderboard');
+    const btnCloseLeaderboard = document.getElementById('btn-close-leaderboard');
         if(btnCloseLeaderboard) {
             btnCloseLeaderboard.addEventListener('click', () => {
-                document.getElementById('leaderboard-modal').classList.add('hidden');
+                document.getElementById('leaderboard-modal').style.display = 'none'; // YENİ: Doğrudan stili değiştirerek kapatır
             });
         }
     },
