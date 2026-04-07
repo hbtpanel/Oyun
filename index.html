@@ -1,0 +1,61 @@
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Bilgehan Büyük Adam</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div class="top-bar">
+    <div id="level-display">Seviye: <span id="lvl-text">1</span></div>
+    <div id="moves-display" style="color: #e74c3c;">Hamle: <span id="moves-text">0</span></div>
+    <div id="score-display">Puan: <span id="pts-text">0</span></div>
+</div>
+
+        
+        <div class="bottom-bar">
+            <button id="btn-leaderboard">Skor Tablosu</button>
+            <button id="btn-help" class="desperate-btn">Yardım!</button>
+        </div>
+    </div>
+
+    <div id="magic-ritual-screen" class="hidden">
+        <h1 class="glow-text">BİLGEHAN BÜYÜK ADAM</h1>
+        <p class="sub-text">Bunu içinden 3 defa söyle...</p>
+    </div>
+<div id="defeat-modal" class="hidden">
+        <div class="modal-content">
+            <h2 style="color: #e74c3c; margin-bottom: 10px;">HAMLELER BİTTİ!</h2>
+            <p>Büyü yarım kaldı... Ne yapmak istersin?</p>
+            
+            <div class="modal-buttons">
+                <button id="btn-buy-moves">100 Puan Ver (+5 Hamle)</button>
+                <button id="btn-ritual-retry" class="desperate-btn">RİTÜEL YAP (+5 Hamle & Şişe)</button>
+                <button id="btn-restart-level">Baştan Başla (Bedava)</button>
+            </div>
+        </div>
+    </div>
+    <div id="start-overlay">
+        <h1 class="glow-text">BİLGEHAN BÜYÜK ADAM</h1>
+        <button id="btn-start">OYUNA BAŞLA</button>
+    </div>
+    <div id="win-text-overlay" class="hidden">
+        <h1 class="victory-text">BÜYÜ TAMAM!</h1>
+    </div>
+
+    <div id="magic-smoke-transition" class="hidden"></div>
+
+    <script src="js/audio.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/level.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
