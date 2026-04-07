@@ -14,10 +14,11 @@ body, html {
     margin: 0;
     padding: 0;
     width: 100vw;
-    height: 100dvh; /* Mobilde adres çubuğu payını otomatik hesaplayan güvenli kod */
+    height: 100dvh; 
+    height: -webkit-fill-available; /* iOS Safari için tam yüksekliği zorlar */
     overflow: hidden;
-    font-family: 'MedievalSharp', 'Arial', sans-serif;
     background-color: #1a1a2e;
+    position: fixed; /* Kaydırmayı tamamen engellemek için */
     
     /* Arka plan ayarları */
     background-image: url('../arkaplan.jpg'); 
@@ -61,7 +62,7 @@ body::before {
 /* Üst Menü (Seviye ve Puan) - Modern ve Çentik Korumalı */
 .top-bar {
     position: absolute;
-    top: env(safe-area-inset-top, 20px);
+    top: env(safe-area-inset-top, 10px); /* 20px'den 10px'e düşürdük */
     left: 0;
     width: 100%;
     box-sizing: border-box;
@@ -85,7 +86,7 @@ body::before {
 /* Alt Menü (Butonlar) - Modern ve Ortalı */
 .bottom-bar {
     position: absolute;
-    bottom: env(safe-area-inset-bottom, 20px);
+    bottom: env(safe-area-inset-bottom, 5px); /* 20px yerine 5px veya 0px yapabilirsin */
     left: 0;
     width: 100%;
     box-sizing: border-box;
