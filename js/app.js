@@ -1,11 +1,10 @@
 const GameApp = {
-  state: {
+   state: {
         level: 1, points: 0, movesLeft: 0,
         tubes: [], selectedTube: null, isAnimating: false,
         pouringData: null, ritualUsedInLevel: false,
         winPhase: 0, winStartTime: 0, levelStartTime: 0,
-        autoSolveUsesInLevel: 0,
-        moveHistory: [] // YENİ: Oyunun hafızası
+        autoSolveUsesInLevel: 0 // YENİ: Katlanarak artan puan için kullanım sayacı
     },
 
     init: function() {
@@ -72,9 +71,8 @@ const GameApp = {
         this.state.tubes = levelData.tubesData;
         this.state.movesLeft = levelData.movesLimit;
         this.state.ritualUsedInLevel = false; 
-        this.state.autoSolveUsesInLevel = 0; 
+        this.state.autoSolveUsesInLevel = 0; // YENİ: Sayacı sıfırla
         this.state.levelStartTime = Date.now(); 
-        this.state.moveHistory = []; // YENİ: Her bölümde geçmişi sıfırla
         this.updateUI();
     },
 
@@ -229,16 +227,7 @@ const GameApp = {
         return bestScore > -500 ? bestMove : null;
     },
 
-   executePour: async function(fromIndex, toIndex) {
-        // --- YENİ: HAMLEYİ GERİ ALMA GEÇMİŞİNE KAYDET (Son 5 hamle) ---
-        const historyState = this.state.tubes.map(t => ({
-            capacity: t.capacity,
-            blocks: t.blocks.map(b => ({ color: b.color, hidden: b.hidden }))
-        }));
-        this.state.moveHistory.push(historyState);
-        if (this.state.moveHistory.length > 5) this.state.moveHistory.shift(); 
-        // -------------------------------------------------------------
-
+    executePour: async function(fromIndex, toIndex) {
         this.state.isAnimating = true;
         
         const fromTube = this.state.tubes[fromIndex];
@@ -289,12 +278,7 @@ const GameApp = {
         this.state.movesLeft--;
         this.updateUI();
 
-       this.checkWinCondition();
-        
-        // YENİ: Oyun kazanılmadıysa, oyuncunun yapabileceği başka hamle kaldı mı kontrol et
-        if (this.state.winPhase === 0) {
-            this.checkDeadEnd();
-        }
+        this.checkWinCondition();
     },
 
     checkWinCondition: function() {
@@ -324,93 +308,6 @@ const GameApp = {
             this.handleLevelWinSequence(); 
         } else if (this.state.movesLeft <= 0 && this.state.winPhase === 0) {
             setTimeout(() => { this.showDefeatModal(); }, 500);
-        }
-    },
-
-    // --- YENİ: GERİ ALMA SİHRİ ---
-    undoMove: function() {
-        if (this.state.isAnimating || this.state.winPhase > 0 || this.state.isAutoSolving) return;
-        
-        if (this.state.moveHistory.length === 0) {
-            alert("Geri alınacak hamle yok Büyücüm!");
-            return;
-        }
-
-        if (this.state.points < 50) {
-            alert("Hamleyi geri almak için 50 puana ihtiyacın var!");
-            return;
-        }
-
-        // Puanı düş ve geçmişten son hamleyi al
-        this.state.points -= 50;
-        const previousState = this.state.moveHistory.pop();
-        
-        // Tabloyu eski haline getir (Birebir kopyala)
-        this.state.tubes = previousState.map(t => ({
-            capacity: t.capacity,
-            blocks: t.blocks.map(b => ({ color: b.color, hidden: b.hidden }))
-        }));
-
-        this.state.movesLeft++; // Giden hamle hakkını geri ver
-        
-        AudioManager.play('click'); 
-        this.saveGame();
-        this.updateUI();
-    },
-
-    // --- YENİ: TIKANMA KONTROLÜ (DEAD-END) ---
-    checkDeadEnd: function() {
-        let hasValidMove = false;
-        
-        // Tablodaki tüm şişe kombinasyonlarını birbiriyle dene
-        for (let i = 0; i < this.state.tubes.length; i++) {
-            for (let j = 0; j < this.state.tubes.length; j++) {
-                if (i === j) continue;
-                if (this.canPour(i, j)) {
-                    hasValidMove = true;
-                    break;
-                }
-            }
-            if (hasValidMove) break;
-        }
-
-        // Eğer geçerli hiçbir hamle yoksa, uyarı ver
-        if (!hasValidMove && this.state.movesLeft > 0) {
-            setTimeout(() => {
-                const modal = document.getElementById('defeat-modal');
-                const title = modal.querySelector('h2');
-                const desc = modal.querySelector('p');
-                
-                title.innerText = "BÜYÜ TIKANDI!";
-                title.style.color = "#f39c12"; // Turuncu uyarı rengi
-                desc.innerText = "Hiçbir şişe birbiriyle eşleşmiyor. Geri al veya Ritüel yap!";
-                
-                modal.classList.remove('hidden');
-            }, 600); // Sıvı akma animasyonunun bitmesini biraz bekler
-        }
-    },
-
-    // --- GÜNCELLEME: YENİLGİ EKRANI METİNLERİNİ SIFIRLAMA ---
-    showDefeatModal: function() {
-        const modal = document.getElementById('defeat-modal');
-        const title = modal.querySelector('h2');
-        const desc = modal.querySelector('p');
-        
-        // Tıkanma (Dead-end) uyarısından sonra normal yenilgi ekranına dönmesini garanti eder
-        title.innerText = "HAMLELER BİTTİ!";
-        title.style.color = "#e74c3c"; 
-        desc.innerText = "Büyü yarım kaldı... Ne yapmak istersin?";
-
-        modal.classList.remove('hidden');
-        const ritualBtn = document.getElementById('btn-ritual-retry');
-        if (this.state.ritualUsedInLevel) {
-            ritualBtn.style.opacity = "0.5";
-            ritualBtn.innerText = "Ritüel Hakkı Bitti";
-            ritualBtn.disabled = true;
-        } else {
-            ritualBtn.style.opacity = "1";
-            ritualBtn.innerText = "🔮 RİTÜEL YAP (+5 Hamle & Şişe)";
-            ritualBtn.disabled = false;
         }
     },
 
@@ -583,51 +480,32 @@ const GameApp = {
         this.state.isAutoSolving = false; // YENİ: Yapay Zeka işini bitirdi, kilidi aç!
     },
     setupEvents: function() {
-    // Giriş/Kayıt işlemlerini yöneten iç fonksiyon
-    const handleAuth = async (isLogin) => {
-        const user = document.getElementById('username-input').value.trim();
-        const pass = document.getElementById('password-input').value.trim();
-        const msgEl = document.getElementById('auth-message');
+        const handleAuth = async (isLogin) => {
+            const user = document.getElementById('username-input').value.trim();
+            const pass = document.getElementById('password-input').value.trim();
+            const msgEl = document.getElementById('auth-message');
+            
+            
+            msgEl.style.color = "#f1c40f"; 
+            msgEl.innerText = "Büyü Kitaplarına Bakılıyor...";
+            
+            const result = await (isLogin ? ApiService.login(user, pass) : ApiService.register(user, pass));
+            
+            if (result.success) {
+                document.getElementById('login-overlay').style.display = 'none';
+                document.getElementById('start-overlay').style.display = 'flex'; 
+                
+            } else {
+                msgEl.style.color = "#e74c3c"; 
+                msgEl.innerText = result.message;
+            }
+        };
+
+        const btnLogin = document.getElementById('btn-login');
+        if(btnLogin) btnLogin.addEventListener('click', () => handleAuth(true));
         
-        msgEl.style.color = "#f1c40f"; 
-        msgEl.innerText = "Büyü Kitaplarına Bakılıyor...";
-        
-        const result = await (isLogin ? ApiService.login(user, pass) : ApiService.register(user, pass));
-        
-        if (result.success) {
-            document.getElementById('login-overlay').style.display = 'none';
-            document.getElementById('start-overlay').style.display = 'flex'; 
-        } else {
-            msgEl.style.color = "#e74c3c"; 
-            msgEl.innerText = result.message;
-        }
-        // BURADAKİ Geri Al ve Kapat dinleyicilerini buradan sildik!
-    };
-
-    // --- DOĞRU YER: Tüm buton dinleyicileri burada olmalı ---
-
-    // Geri Al Butonu (Artık her zaman aktif)
-    const btnUndo = document.getElementById('btn-undo');
-    if (btnUndo) {
-        btnUndo.addEventListener('click', () => {
-            this.undoMove();
-        });
-    }
-
-    // Yenilgi ekranını kapatma butonu
-    const btnCloseDefeat = document.getElementById('btn-close-defeat');
-    if (btnCloseDefeat) {
-        btnCloseDefeat.addEventListener('click', () => {
-            document.getElementById('defeat-modal').classList.add('hidden');
-        });
-    }
-
-    // Giriş ve Kayıt Butonları
-    const btnLogin = document.getElementById('btn-login');
-    if(btnLogin) btnLogin.addEventListener('click', () => handleAuth(true));
-    
-    const btnRegister = document.getElementById('btn-register');
-    if(btnRegister) btnRegister.addEventListener('click', () => handleAuth(false));
+        const btnRegister = document.getElementById('btn-register');
+        if(btnRegister) btnRegister.addEventListener('click', () => handleAuth(false));
         
         const btnLogout = document.getElementById('btn-logout');
         if(btnLogout) {

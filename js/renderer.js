@@ -25,31 +25,38 @@ const Renderer = {
         window.addEventListener('resize', () => { this.lastTubeCount = 0; this.resize(); });
     },
 
-   // renderer.js içindeki resize ve draw fonksiyonlarını güncelle:
+   resize: function() {
+        // --- YENİ: RETİNA EKRAN (MOBİL NETLİK) OPTİMİZASYONU ---
+        const dpr = window.devicePixelRatio || 1;
+        
+        // YENİ: Mobilde sahte innerHeight yerine gerçek görünür alanı (clientHeight) baz alıyoruz
+        const winW = window.innerWidth;
+        const winH = document.documentElement.clientHeight || window.innerHeight;
 
-resize: function() {
-    const dpr = window.devicePixelRatio || 1;
-    const winW = window.innerWidth;
-    
-    // document.documentElement.clientHeight yerine window.innerHeight kullanıyoruz
-    const winH = window.innerHeight; 
+        // CSS ile ekranda kaplayacağı gerçek alan
+        this.canvas.style.width = winW + 'px';
+        this.canvas.style.height = winH + 'px';
+        
+        // Canvas'ın iç çözünürlüğü (dpr ile çarpılmış)
+        this.canvas.width = winW * dpr;
+        this.canvas.height = winH * dpr;
+        
+        // Çizimleri bu yeni çözünürlüğe göre ölçekle
+        this.ctx.scale(dpr, dpr);
+        
+        this.lastTubeCount = 0; // Yeniden hesaplama yapılması için sıfırla
+    },
 
-    this.canvas.style.width = winW + 'px';
-    this.canvas.style.height = winH + 'px';
-    
-    this.canvas.width = winW * dpr;
-    this.canvas.height = winH * dpr;
-    
-    this.ctx.scale(dpr, dpr);
-    this.lastTubeCount = 0; 
-},
+    // Matematiksel Yumuşatma (Lerp) - Şişenin uçuşunu pürüzsüz yapar
+    lerp: function(start, end, t) {
+        return start * (1 - t) + end * t;
+    },
 
-draw: function(gameState, time) {
-    const winW = window.innerWidth;
-    const winH = window.innerHeight; // Burada da güncelledik
+ draw: function(gameState, time) {
+        const winW = window.innerWidth;
+        const winH = document.documentElement.clientHeight || window.innerHeight; // YENİ: Gerçek yüksekliği okur
 
-    this.ctx.clearRect(0, 0, winW, winH);
-
+        this.ctx.clearRect(0, 0, winW, winH);
 
         // Çifte karartmayı önlemek için vignette sildik, sadece soluk arka plan (Performans artışı)
         this.ctx.fillStyle = "rgba(15, 25, 35, 0.7)"; 
